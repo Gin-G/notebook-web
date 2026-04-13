@@ -56,8 +56,8 @@ ingress:
 
 # ── Application image ─────────────────────────────────────────────────────────
 image:
-  repository: ghcr.io/org/notebook-gallery
-  tag: latest
+  repository: ghcr.io/gin-g/notebook-web
+  tag: main
   pullPolicy: IfNotPresent
 
 # ── Kubernetes namespace for session pods ─────────────────────────────────────
