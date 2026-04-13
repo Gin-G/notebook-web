@@ -41,7 +41,7 @@ async def lifespan(app: FastAPI):
     session_mgr = SessionManager(config)
 
     log.info("Starting notebook gallery — %d notebook(s) configured", len(config.notebooks))
-    await sync_all(config.cacheDir)
+    config.notebooks = await sync_all(config.cacheDir)
 
     asyncio.create_task(session_mgr.reaper_task())
     asyncio.create_task(_periodic_sync())
@@ -59,7 +59,7 @@ async def _periodic_sync() -> None:
     while True:
         await asyncio.sleep(3600)
         try:
-            await sync_all(config.cacheDir)
+            config.notebooks = await sync_all(config.cacheDir)
         except Exception as e:
             log.error("Periodic sync error: %s", e)
 

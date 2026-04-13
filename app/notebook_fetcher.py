@@ -5,7 +5,7 @@ import asyncio
 import logging
 import re
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 import git
 import nbformat
@@ -95,9 +95,65 @@ def get_notebook_json(notebook: NotebookEntry, cache_dir: str) -> Optional[dict]
         return nbformat.read(f, as_version=4)
 
 
-async def sync_all(cache_dir: str) -> None:
+def _notebook_title(nb_path: Path) -> str:
+    """Extract a human-readable title from a notebook, falling back to the filename stem."""
+    try:
+        with open(nb_path) as f:
+            nb = nbformat.read(f, as_version=4)
+        title = nb.get("metadata", {}).get("title", "")
+        if title:
+            return title
+        for cell in nb.cells:
+            if cell.cell_type == "markdown":
+                for line in cell.source.splitlines():
+                    if line.startswith("#"):
+                        return line.lstrip("#").strip()
+                break
+    except Exception:
+        pass
+    return nb_path.stem.replace("-", " ").replace("_", " ").title()
+
+
+def discover_notebooks(notebook: NotebookEntry, cache_dir: str) -> List[NotebookEntry]:
+    """If notebook.path is a directory, return one entry per .ipynb found. Otherwise return [notebook]."""
+    repo_dir = _repo_dir(notebook, cache_dir)
+    target = repo_dir / notebook.path
+
+    if not target.exists() or not target.is_dir():
+        return [notebook]
+
+    children = []
+    for nb_path in sorted(target.rglob("*.ipynb")):
+        if ".ipynb_checkpoints" in nb_path.parts:
+            continue
+        rel_path = nb_path.relative_to(repo_dir)
+        slug = re.sub(r"[^a-z0-9]+", "-", nb_path.stem.lower()).strip("-")
+        children.append(NotebookEntry(
+            id=f"{notebook.id}-{slug}",
+            name=_notebook_title(nb_path),
+            repo=notebook.repo,
+            ref=notebook.ref,
+            path=str(rel_path),
+            tags=notebook.tags,
+            description=notebook.description,
+            resources=notebook.resources,
+        ))
+
+    if not children:
+        log.warning("Directory %s contains no .ipynb files", target)
+
+    return children
+
+
+async def sync_all(cache_dir: str) -> List[NotebookEntry]:
     config = get_config()
     tasks = [async_sync_notebook(nb, cache_dir) for nb in config.notebooks]
     results = await asyncio.gather(*tasks, return_exceptions=True)
     ok = sum(1 for r in results if r is not None and not isinstance(r, Exception))
-    log.info("Sync complete: %d/%d notebooks available", ok, len(config.notebooks))
+    log.info("Sync complete: %d/%d source(s) available", ok, len(config.notebooks))
+
+    expanded: List[NotebookEntry] = []
+    for nb in config.notebooks:
+        expanded.extend(discover_notebooks(nb, cache_dir))
+    log.info("Expanded to %d notebook(s) after directory discovery", len(expanded))
+    return expanded
