@@ -46,6 +46,7 @@ theme:
 
 # ── Ingress ───────────────────────────────────────────────────────────────────
 ingress:
+  ingressClassName: ""
   enabled: true
   host: "notebooks.example.com"
   annotations: {}
