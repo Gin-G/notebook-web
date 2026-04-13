@@ -1,0 +1,98 @@
+# ── Notebook catalog ─────────────────────────────────────────────────────────
+notebooks:
+  - name: "Climate Data Analysis"
+    repo: "https://github.com/org/notebooks.git"
+    ref: "main"
+    path: "climate/analysis.ipynb"
+    description: "Exploratory analysis of global surface temperature datasets"
+    tags: ["python", "climate", "pandas"]
+    resources:
+      limits:
+        cpu: "2"
+        memory: "4Gi"
+      requests:
+        cpu: "500m"
+        memory: "1Gi"
+
+  - name: "Machine Learning Basics"
+    repo: "https://github.com/org/notebooks.git"
+    ref: "main"
+    path: "ml/basics.ipynb"
+    description: "Introduction to scikit-learn: classification, regression, and evaluation"
+    tags: ["python", "machine-learning", "scikit-learn"]
+
+# ── Session defaults ──────────────────────────────────────────────────────────
+sessionDefaults:
+  image: "jupyter/minimal-notebook:latest"
+  resources:
+    limits:
+      cpu: "1"
+      memory: "2Gi"
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+  idleTimeoutMinutes: 30
+  maxSessions: 20
+  kernelStartupTimeoutSeconds: 120
+
+# ── Theme ─────────────────────────────────────────────────────────────────────
+theme:
+  title: "CIRRUS Notebook Gallery"
+  primaryColor: "#1a5276"
+  fontFamily: "Inter, system-ui, sans-serif"
+  customCssPath: ""
+  customJsPath: ""
+  codeTheme: "one-dark"
+
+# ── Ingress ───────────────────────────────────────────────────────────────────
+ingress:
+  enabled: true
+  host: "notebooks.example.com"
+  annotations: {}
+  tls: []
+    # - secretName: notebooks-tls
+    #   hosts:
+    #     - notebooks.example.com
+
+# ── Application image ─────────────────────────────────────────────────────────
+image:
+  repository: ghcr.io/org/notebook-gallery
+  tag: latest
+  pullPolicy: IfNotPresent
+
+# ── Kubernetes namespace for session pods ─────────────────────────────────────
+namespace: default
+
+# ── Notebook cache directory inside the app container ────────────────────────
+cacheDir: /tmp/notebook-cache
+
+# ── Deployment settings ───────────────────────────────────────────────────────
+replicaCount: 1
+
+podAnnotations: {}
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop: [ALL]
+
+resources:
+  limits:
+    cpu: "500m"
+    memory: "512Mi"
+  requests:
+    cpu: "100m"
+    memory: "128Mi"
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+serviceAccount:
+  name: ""  # auto-derived from chart name if empty

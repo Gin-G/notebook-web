@@ -1,0 +1,15 @@
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+kubernetes>=28.1.0
+nbconvert>=7.10.0
+gitpython>=3.1.40
+aiohttp>=3.9.0
+aiofiles>=23.2.0
+jinja2>=3.1.2
+websockets>=12.0
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+aiosqlite>=0.19.0
+nbformat>=5.9.0
+pygments>=2.17.0
+pyyaml>=6.0.1

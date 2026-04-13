@@ -1,0 +1,14 @@
+apiVersion: v2
+name: notebook-gallery
+description: Kubernetes-native interactive notebook gallery with custom rendered frontend
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - jupyter
+  - notebook
+  - data-science
+  - kubernetes
+maintainers:
+  - name: notebook-gallery
+home: https://github.com/org/notebook-gallery

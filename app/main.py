@@ -1,0 +1,228 @@
+"""FastAPI application — gallery UI, notebook API, session management, WebSocket proxy."""
+from __future__ import annotations
+
+import asyncio
+import logging
+import os
+from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import Optional
+
+from fastapi import FastAPI, HTTPException, Request, WebSocket
+from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
+
+from .config import AppConfig, NotebookEntry, load_config
+from .kernel_proxy import proxy_kernel_websocket
+from .notebook_fetcher import get_notebook_json, render_preview, sync_all
+from .session_manager import SessionManager
+
+log = logging.getLogger(__name__)
+BASE_DIR = os.path.dirname(__file__)
+
+# ── Globals ───────────────────────────────────────────────────────────────────
+
+config: AppConfig
+session_mgr: SessionManager
+
+
+# ── Lifespan ──────────────────────────────────────────────────────────────────
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global config, session_mgr
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)-8s %(name)s  %(message)s",
+    )
+    config = load_config()
+    session_mgr = SessionManager(config)
+
+    log.info("Starting notebook gallery — %d notebook(s) configured", len(config.notebooks))
+    await sync_all(config.cacheDir)
+
+    asyncio.create_task(session_mgr.reaper_task())
+    asyncio.create_task(_periodic_sync())
+
+    yield
+
+    for s in session_mgr.list_sessions():
+        try:
+            await session_mgr.delete_session(s.session_id)
+        except Exception:
+            pass
+
+
+async def _periodic_sync() -> None:
+    while True:
+        await asyncio.sleep(3600)
+        try:
+            await sync_all(config.cacheDir)
+        except Exception as e:
+            log.error("Periodic sync error: %s", e)
+
+
+# ── App ───────────────────────────────────────────────────────────────────────
+
+app = FastAPI(title="Notebook Gallery", lifespan=lifespan)
+app.mount(
+    "/static",
+    StaticFiles(directory=os.path.join(BASE_DIR, "static")),
+    name="static",
+)
+templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
+
+
+def _find(notebook_id: str) -> Optional[NotebookEntry]:
+    return next((nb for nb in config.notebooks if nb.id == notebook_id), None)
+
+
+# ── Gallery pages ─────────────────────────────────────────────────────────────
+
+@app.get("/", response_class=HTMLResponse)
+async def gallery(request: Request):
+    notebooks = [
+        {
+            "id": nb.id,
+            "name": nb.name,
+            "description": nb.description,
+            "tags": nb.tags,
+        }
+        for nb in config.notebooks
+    ]
+    return templates.TemplateResponse(
+        "gallery.html",
+        {"request": request, "notebooks": notebooks, "theme": config.theme},
+    )
+
+
+@app.get("/notebook/{notebook_id}", response_class=HTMLResponse)
+async def notebook_page(request: Request, notebook_id: str, preview: int = 0):
+    nb = _find(notebook_id)
+    if not nb:
+        raise HTTPException(status_code=404, detail="Notebook not found")
+    return templates.TemplateResponse(
+        "notebook.html",
+        {
+            "request": request,
+            "notebook": {"id": nb.id, "name": nb.name, "tags": nb.tags},
+            "theme": config.theme,
+            "preview_mode": bool(preview),
+        },
+    )
+
+
+# ── Notebook API ──────────────────────────────────────────────────────────────
+
+@app.get("/api/notebooks")
+async def list_notebooks():
+    return [
+        {"id": nb.id, "name": nb.name, "description": nb.description, "tags": nb.tags}
+        for nb in config.notebooks
+    ]
+
+
+@app.get("/api/notebooks/{notebook_id}/ipynb")
+async def get_ipynb(notebook_id: str):
+    nb = _find(notebook_id)
+    if not nb:
+        raise HTTPException(404, "Notebook not found")
+    data = get_notebook_json(nb, config.cacheDir)
+    if data is None:
+        raise HTTPException(503, "Notebook not yet synced — retry shortly")
+    return JSONResponse(content=data)
+
+
+@app.get("/api/notebooks/{notebook_id}/preview", response_class=HTMLResponse)
+async def notebook_preview(notebook_id: str):
+    nb = _find(notebook_id)
+    if not nb:
+        raise HTTPException(404, "Notebook not found")
+    nb_path = Path(config.cacheDir) / nb.id / "repo" / nb.path
+    if not nb_path.exists():
+        raise HTTPException(503, "Notebook not yet synced")
+    return render_preview(nb_path)
+
+
+# ── Session API ───────────────────────────────────────────────────────────────
+
+class CreateSessionRequest(BaseModel):
+    notebook_id: str
+
+
+@app.post("/api/sessions", status_code=202)
+async def create_session(req: CreateSessionRequest):
+    nb = _find(req.notebook_id)
+    if not nb:
+        raise HTTPException(404, "Notebook not found")
+    try:
+        session = await session_mgr.create_session(nb)
+    except RuntimeError as e:
+        raise HTTPException(429, str(e))
+    return {
+        "session_id": session.session_id,
+        "notebook_id": session.notebook_id,
+        "status": session.status,
+    }
+
+
+@app.get("/api/sessions/{session_id}")
+async def get_session(session_id: str):
+    s = session_mgr.get_session(session_id)
+    if not s:
+        raise HTTPException(404, "Session not found")
+    return {
+        "session_id": s.session_id,
+        "notebook_id": s.notebook_id,
+        "notebook_name": s.notebook_name,
+        "status": s.status,
+        "kernel_id": s.kernel_id,
+        "created_at": s.created_at.isoformat(),
+        "last_activity": s.last_activity.isoformat(),
+    }
+
+
+@app.delete("/api/sessions/{session_id}")
+async def delete_session(session_id: str):
+    if not await session_mgr.delete_session(session_id):
+        raise HTTPException(404, "Session not found")
+    return {"deleted": True}
+
+
+@app.post("/api/sessions/{session_id}/interrupt")
+async def interrupt_session(session_id: str):
+    ok = await session_mgr.interrupt_kernel(session_id)
+    if not ok:
+        raise HTTPException(404, "Session not found or not running")
+    return {"interrupted": True}
+
+
+@app.get("/api/sessions")
+async def list_sessions():
+    return [
+        {
+            "session_id": s.session_id,
+            "notebook_id": s.notebook_id,
+            "notebook_name": s.notebook_name,
+            "status": s.status,
+            "created_at": s.created_at.isoformat(),
+            "last_activity": s.last_activity.isoformat(),
+        }
+        for s in session_mgr.list_sessions()
+    ]
+
+
+# ── WebSocket kernel proxy ────────────────────────────────────────────────────
+
+@app.websocket("/ws/kernel/{session_id}")
+async def kernel_ws(websocket: WebSocket, session_id: str):
+    session = session_mgr.get_session(session_id)
+    if not session:
+        await websocket.close(code=4004, reason="Session not found")
+        return
+    if session.status != "running":
+        await websocket.close(code=4003, reason=f"Session not ready: {session.status}")
+        return
+    await proxy_kernel_websocket(websocket, session, session_mgr)

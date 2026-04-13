@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+
+{% block navbar_extra %}
+<div class="search-wrap">
+  <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+       fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+  </svg>
+  <input type="search" id="search-input" class="search-input" placeholder="Search notebooks…" autocomplete="off" spellcheck="false">
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="gallery-page">
+
+  <header class="gallery-hero">
+    <h1 class="gallery-title">Notebook Gallery</h1>
+    <p class="gallery-subtitle">Browse, preview, and launch interactive computational notebooks</p>
+  </header>
+
+  {# Build unique sorted tag list #}
+  {% set seen_tags = namespace(tags=[]) %}
+  {% for nb in notebooks %}
+    {% for tag in nb.tags %}
+      {% if tag not in seen_tags.tags %}
+        {% set seen_tags.tags = seen_tags.tags + [tag] %}
+      {% endif %}
+    {% endfor %}
+  {% endfor %}
+
+  {% if seen_tags.tags %}
+  <div class="tag-filter" id="tag-filter" role="group" aria-label="Filter by tag">
+    <button class="tag-pill active" data-tag="">All</button>
+    {% for tag in seen_tags.tags | sort %}
+    <button class="tag-pill" data-tag="{{ tag }}">{{ tag }}</button>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="notebook-count" id="notebook-count">
+    {{ notebooks | length }} notebook{{ 's' if notebooks | length != 1 else '' }}
+  </div>
+
+  {% if notebooks %}
+  <div class="notebook-grid" id="notebook-grid">
+    {% for nb in notebooks %}
+    <article class="notebook-card"
+             data-id="{{ nb.id }}"
+             data-name="{{ nb.name | lower }}"
+             data-desc="{{ nb.description | lower }}"
+             data-tags="{{ nb.tags | join(' ') | lower }}">
+
+      <div class="card-header">
+        <div class="card-icon" aria-hidden="true">
+          <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+            <line x1="10" y1="9" x2="8" y2="9"/>
+          </svg>
+        </div>
+        <div class="card-tags">
+          {% for tag in nb.tags %}
+          <span class="tag-chip">{{ tag }}</span>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="card-body">
+        <h2 class="card-title">{{ nb.name }}</h2>
+        {% if nb.description %}
+        <p class="card-description">{{ nb.description }}</p>
+        {% endif %}
+      </div>
+
+      <div class="card-footer">
+        <a href="/notebook/{{ nb.id }}" class="btn btn-primary btn-launch">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+               fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Launch
+        </a>
+        <a href="/notebook/{{ nb.id }}?preview=1" class="btn btn-ghost btn-preview">Preview</a>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24"
+         fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>
+      <polyline points="14 2 14 8 20 8"/>
+    </svg>
+    <p>No notebooks configured yet.</p>
+    <small>Add entries to the <code>notebooks</code> list in <code>values.yaml</code>.</small>
+  </div>
+  {% endif %}
+
+  <div class="no-results" id="no-results" style="display:none">
+    <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24"
+         fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+    </svg>
+    <p>No notebooks match your search</p>
+    <button class="btn btn-ghost" id="btn-clear-search">Clear search</button>
+  </div>
+
+</div>
+<script src="/static/js/app.js"></script>
+{% endblock %}

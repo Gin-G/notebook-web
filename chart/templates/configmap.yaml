@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "notebook-gallery.fullname" . }}-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "notebook-gallery.labels" . | nindent 4 }}
+data:
+  config.json: |
+    {{- dict
+          "notebooks"        .Values.notebooks
+          "sessionDefaults"  .Values.sessionDefaults
+          "theme"            .Values.theme
+          "ingress"          .Values.ingress
+          "image"            .Values.image
+          "namespace"        .Release.Namespace
+          "cacheDir"         .Values.cacheDir
+      | toJson | nindent 4 }}

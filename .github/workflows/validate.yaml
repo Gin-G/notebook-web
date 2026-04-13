@@ -1,0 +1,60 @@
+name: Validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  helm-lint:
+    name: Helm lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: "3.14.0"
+
+      - name: Lint chart
+        run: helm lint chart/ --strict
+
+      - name: Template render (dry-run)
+        run: |
+          helm template notebook-gallery chart/ \
+            --namespace default \
+            --set image.tag=test \
+            > /dev/null
+
+  python-check:
+    name: Python type check + import test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Check syntax (py_compile)
+        run: |
+          python -m py_compile app/config.py
+          python -m py_compile app/notebook_fetcher.py
+          python -m py_compile app/session_manager.py
+          python -m py_compile app/kernel_proxy.py
+          python -m py_compile app/main.py
+
+      - name: Import check
+        run: python -c "from app.config import load_config; print('config OK')"
+        env:
+          CONFIG_PATH: chart/values.yaml

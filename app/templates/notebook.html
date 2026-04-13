@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% block title %}{{ notebook.name }} — {{ theme.title }}{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css"
+      crossorigin="anonymous">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/{{ theme.codeTheme | replace('_', '-') }}.min.css"
+      crossorigin="anonymous">
+<link rel="stylesheet" href="/static/css/notebook.css">
+{% endblock %}
+
+{% block navbar_extra %}
+<div class="nb-toolbar">
+  <div class="kernel-status-wrap">
+    <span class="status-dot" id="status-dot" data-state="unknown"></span>
+    <span class="status-label" id="status-label">Initializing</span>
+  </div>
+
+  <div class="toolbar-sep"></div>
+
+  <button class="btn btn-sm btn-ghost" id="btn-interrupt" disabled title="Interrupt kernel (stop running cell)">
+    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+      <rect x="4" y="4" width="16" height="16" rx="2"/>
+    </svg>
+    Interrupt
+  </button>
+
+  <button class="btn btn-sm btn-primary" id="btn-run-all" disabled>
+    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24"
+         fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <polygon points="5 3 19 12 5 21 5 3"/><line x1="19" y1="3" x2="19" y2="21"/>
+    </svg>
+    Run All
+  </button>
+
+  <a href="/" class="btn btn-sm btn-ghost nb-back">
+    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24"
+         fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="15 18 9 12 15 6"/>
+    </svg>
+    Gallery
+  </a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="nb-page">
+
+  {# ── Loading overlay ── #}
+  {% if not preview_mode %}
+  <div class="loading-overlay" id="loading-overlay">
+    <div class="loading-card">
+      <div class="spinner" aria-hidden="true"></div>
+      <h3 class="loading-title">Starting session</h3>
+      <p class="loading-sub" id="loading-sub">Launching kernel pod…</p>
+      <ol class="steps-list" id="steps-list">
+        <li class="step" id="step-pod">Creating session pod</li>
+        <li class="step" id="step-kernel">Starting Python kernel</li>
+        <li class="step" id="step-notebook">Fetching notebook</li>
+        <li class="step" id="step-connect">Connecting WebSocket</li>
+      </ol>
+      <button class="btn btn-ghost" id="btn-cancel">Cancel</button>
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── Notebook header ── #}
+  <div class="nb-header">
+    <h1 class="nb-title" id="nb-title">{{ notebook.name }}</h1>
+    <div class="nb-meta">
+      {% for tag in notebook.tags %}
+      <span class="tag-chip">{{ tag }}</span>
+      {% endfor %}
+      {% if preview_mode %}
+      <span class="tag-chip tag-preview">preview</span>
+      {% endif %}
+    </div>
+  </div>
+
+  {# ── Cell container — populated by notebook.js ── #}
+  <div class="cells-container" id="cells-container"></div>
+
+</div>
+
+{# ── Runtime config for JS ── #}
+<script>
+window.NB_CONFIG = {
+  notebookId:   {{ notebook.id   | tojson }},
+  notebookName: {{ notebook.name | tojson }},
+  codeTheme:    {{ theme.codeTheme | tojson }},
+  previewMode:  {{ 'true' if preview_mode else 'false' }},
+};
+</script>
+
+{# ── Dependencies (CDN) ── #}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/python/python.min.js" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/markdown/markdown.min.js" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/matchbrackets.min.js" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/closebrackets.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
+{# MathJax for LaTeX rendering — loads asynchronously #}
+<script>
+window.MathJax = {
+  tex: { inlineMath: [['$','$'], ['\\(','\\)']] },
+  svg: { fontCache: 'global' },
+  startup: { typeset: false }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js" async></script>
+
+{# ── App scripts ── #}
+<script src="/static/js/renderers.js"></script>
+<script src="/static/js/kernel.js"></script>
+<script src="/static/js/notebook.js"></script>
+{% endblock %}
