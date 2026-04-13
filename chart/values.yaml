@@ -42,7 +42,7 @@ theme:
   fontFamily: "Inter, system-ui, sans-serif"
   customCssPath: ""
   customJsPath: ""
-  codeTheme: "one-dark"
+  codeTheme: "dracula"
 
 # ── Ingress ───────────────────────────────────────────────────────────────────
 ingress:

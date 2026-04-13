@@ -267,6 +267,9 @@
   height: auto !important;
   border-radius: var(--radius-sm);
   padding: .25rem 0;
+  /* Fallback keeps code visible even if the chosen theme CSS fails to load */
+  background: #282a36;
+  color: #f8f8f2;
 }
 .CodeMirror-scroll { min-height: 2.5rem; }
 .CodeMirror-focused { outline: none; }
