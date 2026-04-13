@@ -29,7 +29,7 @@ async def proxy_kernel_websocket(
             async with http.ws_connect(
                 kernel_ws_url,
                 heartbeat=30,
-                timeout=aiohttp.ClientWSTimeout(ws_connect=15),
+                timeout=15,
             ) as kernel_ws:
                 log.info(
                     "Kernel proxy open  session=%s kernel=%s",
