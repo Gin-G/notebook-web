@@ -93,8 +93,9 @@ async def gallery(request: Request):
         for nb in config.notebooks
     ]
     return templates.TemplateResponse(
+        request,
         "gallery.html",
-        {"request": request, "notebooks": notebooks, "theme": config.theme},
+        {"notebooks": notebooks, "theme": config.theme},
     )
 
 
@@ -104,9 +105,9 @@ async def notebook_page(request: Request, notebook_id: str, preview: int = 0):
     if not nb:
         raise HTTPException(status_code=404, detail="Notebook not found")
     return templates.TemplateResponse(
+        request,
         "notebook.html",
         {
-            "request": request,
             "notebook": {"id": nb.id, "name": nb.name, "tags": nb.tags},
             "theme": config.theme,
             "preview_mode": bool(preview),

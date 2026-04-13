@@ -58,7 +58,7 @@ ingress:
 # ── Application image ─────────────────────────────────────────────────────────
 image:
   repository: ghcr.io/gin-g/notebook-web
-  tag: main
+  tag: "0000000"  # overwritten by CI — set to the 7-char git SHA on each push
   pullPolicy: IfNotPresent
 
 # ── Kubernetes namespace for session pods ─────────────────────────────────────
