@@ -1,9 +1,9 @@
 # ── Notebook catalog ─────────────────────────────────────────────────────────
 notebooks:
-  - name: "CESM-LENS"
-    repo: "https://github.com/ProjectPythia/cesm-lens-aws-cookbook.git"
+  - name: "Climate Data Analysis"
+    repo: "https://github.com/org/notebooks.git"
     ref: "main"
-    path: "notebooks"
+    path: "climate/analysis.ipynb"
     description: "Exploratory analysis of global surface temperature datasets"
     tags: ["python", "climate", "pandas"]
     resources:
@@ -15,12 +15,12 @@ notebooks:
         memory: "1Gi"
 
   - name: "Machine Learning Basics"
-    repo: "https://github.com/Unidata/supervised-ml-readiness.git"
+    repo: "https://github.com/org/notebooks.git"
     ref: "main"
-    path: "02_MachineLearningApplications/MachineLearningApplications.ipynb"
+    path: "ml/basics.ipynb"
     description: "Introduction to scikit-learn: classification, regression, and evaluation"
     tags: ["python", "machine-learning", "scikit-learn"]
-
+    
 # ── Session defaults ──────────────────────────────────────────────────────────
 sessionDefaults:
   image: "jupyter/minimal-notebook:latest"
