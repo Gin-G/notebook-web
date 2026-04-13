@@ -62,6 +62,12 @@ class SessionManager:
 
         pod_name = f"nb-{session_id[:8]}"
 
+        def _label_safe(value: str, max_len: int = 63) -> str:
+            """Lowercase, replace invalid chars with '-', strip leading/trailing '-'."""
+            import re
+            slug = re.sub(r"[^A-Za-z0-9_.-]", "-", value).strip("-")
+            return slug[:max_len].rstrip("-")
+
         fetch_cmd = (
             "git clone --depth=1 --single-branch"
             f" --branch {notebook.ref}"
@@ -77,8 +83,8 @@ class SessionManager:
                 labels={
                     MANAGED_BY_LABEL: MANAGED_BY_VALUE,
                     "session-id": session_id,
-                    "notebook-id": notebook.id[:63],
-                    "notebook-name": notebook.name[:63],
+                    "notebook-id": _label_safe(notebook.id),
+                    "notebook-name": _label_safe(notebook.name),
                 },
             ),
             spec=k8s.V1PodSpec(
