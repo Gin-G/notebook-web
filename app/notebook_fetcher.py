@@ -86,6 +86,29 @@ def render_preview(nb_path: Path) -> str:
     return match.group(1).strip() if match else body
 
 
+def find_env_file(notebook: NotebookEntry, cache_dir: str) -> Optional[Path]:
+    """Return the path to the env/requirements file on disk, or None if not found."""
+    repo_dir = _repo_dir(notebook, cache_dir)
+    nb_dir = str(notebook.path).rsplit("/", 1)[0] if "/" in notebook.path else "."
+
+    if notebook.envFile:
+        p = repo_dir / notebook.envFile
+        return p if p.exists() else None
+
+    candidates = [
+        repo_dir / nb_dir / "requirements.txt",
+        repo_dir / "requirements.txt",
+        repo_dir / nb_dir / "environment.yml",
+        repo_dir / "environment.yml",
+        repo_dir / nb_dir / "environment.yaml",
+        repo_dir / "environment.yaml",
+    ]
+    for p in candidates:
+        if p.exists():
+            return p
+    return None
+
+
 def get_notebook_json(notebook: NotebookEntry, cache_dir: str) -> Optional[dict]:
     """Return the .ipynb as a plain dict (nbformat 4), or None if not yet synced."""
     nb_path = _notebook_path(notebook, cache_dir)

@@ -13,6 +13,7 @@ import aiohttp
 from kubernetes import client as k8s, config as k8s_config
 
 from .config import AppConfig, NotebookEntry
+from .notebook_fetcher import find_env_file
 
 log = logging.getLogger(__name__)
 
@@ -39,6 +40,7 @@ class SessionManager:
         self._sessions: Dict[str, Session] = {}
         self._lock = asyncio.Lock()
         self._k8s_api: Optional[k8s.CoreV1Api] = None
+        self._build_mgr = None  # set after K8s client is initialised
 
     # ── Kubernetes client ──────────────────────────────────────────────────
 
@@ -49,6 +51,9 @@ class SessionManager:
             except k8s_config.ConfigException:
                 k8s_config.load_kube_config()
             self._k8s_api = k8s.CoreV1Api()
+            if self.config.build.registry:
+                from .build_manager import BuildManager
+                self._build_mgr = BuildManager(self.config, self._k8s_api)
         return self._k8s_api
 
     def _ns(self) -> str:
@@ -56,7 +61,7 @@ class SessionManager:
 
     # ── Pod spec ──────────────────────────────────────────────────────────
 
-    def _pod_spec(self, session_id: str, notebook: NotebookEntry) -> k8s.V1Pod:
+    def _pod_spec(self, session_id: str, notebook: NotebookEntry, session_image: str = "") -> k8s.V1Pod:
         sd = self.config.sessionDefaults
         res = notebook.resources or sd.resources
 
@@ -68,29 +73,11 @@ class SessionManager:
             slug = re.sub(r"[^A-Za-z0-9_.-]", "-", value).strip("-")
             return slug[:max_len].rstrip("-")
 
-        nb_dir = str(notebook.path).rsplit("/", 1)[0] if "/" in notebook.path else "."
+        # Determine which image the Jupyter container will use
+        jupyter_image = session_image or sd.image
 
-        if notebook.envFile:
-            # Explicit path — copy whatever the user specified
-            copy_env = (
-                f"if [ -f /tmp/repo/{notebook.envFile} ]; then"
-                f" cp /tmp/repo/{notebook.envFile} /notebook/$(basename {notebook.envFile});"
-                " fi"
-            )
-        else:
-            # Auto-discover: pip first, then conda, notebook dir before repo root
-            copy_env = (
-                f"_env='';"
-                f" for _f in"
-                f" /tmp/repo/{nb_dir}/requirements.txt"
-                f" /tmp/repo/requirements.txt"
-                f" /tmp/repo/{nb_dir}/environment.yml"
-                f" /tmp/repo/environment.yml"
-                f" /tmp/repo/{nb_dir}/environment.yaml"
-                f" /tmp/repo/environment.yaml; do"
-                f" if [ -f \"$_f\" ]; then _env=\"$_f\"; break; fi; done;"
-                f" if [ -n \"$_env\" ]; then cp \"$_env\" /notebook/$(basename \"$_env\"); fi"
-            )
+        # Only need init containers when we don't have a pre-built image
+        nb_dir = str(notebook.path).rsplit("/", 1)[0] if "/" in notebook.path else "."
 
         fetch_cmd = (
             "git clone --depth=1 --single-branch"
@@ -98,8 +85,29 @@ class SessionManager:
             f" {notebook.repo} /tmp/repo"
             " && mkdir -p /notebook"
             f" && cp /tmp/repo/{notebook.path} /notebook/notebook.ipynb"
-            f" && {copy_env}"
         )
+
+        if not session_image:
+            if notebook.envFile:
+                copy_env = (
+                    f"if [ -f /tmp/repo/{notebook.envFile} ]; then"
+                    f" cp /tmp/repo/{notebook.envFile} /notebook/$(basename {notebook.envFile});"
+                    " fi"
+                )
+            else:
+                copy_env = (
+                    f"_env='';"
+                    f" for _f in"
+                    f" /tmp/repo/{nb_dir}/requirements.txt"
+                    f" /tmp/repo/requirements.txt"
+                    f" /tmp/repo/{nb_dir}/environment.yml"
+                    f" /tmp/repo/environment.yml"
+                    f" /tmp/repo/{nb_dir}/environment.yaml"
+                    f" /tmp/repo/environment.yaml; do"
+                    f" if [ -f \"$_f\" ]; then _env=\"$_f\"; break; fi; done;"
+                    f" if [ -n \"$_env\" ]; then cp \"$_env\" /notebook/$(basename \"$_env\"); fi"
+                )
+            fetch_cmd += f" && {copy_env}"
 
         install_cmd = (
             "if [ -f /notebook/requirements.txt ]; then"
@@ -109,6 +117,22 @@ class SessionManager:
             "  conda env update --name base --file \"$_ef\" --prune;"
             "fi"
         )
+
+        init_containers = [
+            k8s.V1Container(
+                name="notebook-fetcher",
+                image="alpine/git:latest",
+                command=["sh", "-c", fetch_cmd],
+                volume_mounts=[k8s.V1VolumeMount(name="notebook-data", mount_path="/notebook")],
+            )
+        ]
+        if not session_image:
+            init_containers.append(k8s.V1Container(
+                name="pip-installer",
+                image=jupyter_image,
+                command=["sh", "-c", install_cmd],
+                volume_mounts=[k8s.V1VolumeMount(name="notebook-data", mount_path="/notebook")],
+            ))
 
         return k8s.V1Pod(
             metadata=k8s.V1ObjectMeta(
@@ -123,28 +147,11 @@ class SessionManager:
             ),
             spec=k8s.V1PodSpec(
                 restart_policy="Never",
-                init_containers=[
-                    k8s.V1Container(
-                        name="notebook-fetcher",
-                        image="alpine/git:latest",
-                        command=["sh", "-c", fetch_cmd],
-                        volume_mounts=[
-                            k8s.V1VolumeMount(name="notebook-data", mount_path="/notebook")
-                        ],
-                    ),
-                    k8s.V1Container(
-                        name="pip-installer",
-                        image=sd.image,
-                        command=["sh", "-c", install_cmd],
-                        volume_mounts=[
-                            k8s.V1VolumeMount(name="notebook-data", mount_path="/notebook")
-                        ],
-                    ),
-                ],
+                init_containers=init_containers,
                 containers=[
                     k8s.V1Container(
                         name="jupyter",
-                        image=sd.image,
+                        image=jupyter_image,
                         command=[
                             "jupyter",
                             "server",
@@ -190,7 +197,16 @@ class SessionManager:
                 )
 
         session_id = str(uuid.uuid4())
-        pod_spec = self._pod_spec(session_id, notebook)
+
+        # Resolve session image: explicit > auto-built > default (init-container install)
+        session_image = notebook.image
+        if not session_image and self._build_mgr:
+            env_path = find_env_file(notebook, self.config.cacheDir)
+            session_image = await self._build_mgr.get_or_build_image(
+                notebook, env_path, self.config.sessionDefaults.image
+            ) or ""
+
+        pod_spec = self._pod_spec(session_id, notebook, session_image)
 
         session = Session(
             session_id=session_id,

@@ -19,7 +19,8 @@ notebooks:
     repo: "https://github.com/org/notebooks.git"
     ref: "main"
     path: "ml/basics.ipynb"
-    # envFile: ""  # leave empty to auto-discover requirements.txt / environment.yml
+    # envFile: ""   # leave empty to auto-discover requirements.txt / environment.yml
+    # image: ""     # set to a pre-built image to skip env install on every session
     description: "Introduction to scikit-learn: classification, regression, and evaluation"
     tags: ["python", "machine-learning", "scikit-learn"]
     
@@ -62,6 +63,21 @@ image:
   repository: ghcr.io/gin-g/notebook-web
   tag: 1e7ca82
   pullPolicy: IfNotPresent
+
+# ── Session image auto-builder ────────────────────────────────────────────────
+# When registry is set, the first session for each notebook triggers a kaniko
+# build that bakes dependencies into a new image. Subsequent sessions start
+# instantly using the cached image. Leave registry empty to disable.
+build:
+  registry: ""           # e.g. ghcr.io/gin-g/notebook-web/sessions
+  pushSecretName: ""     # K8s secret with .dockerconfigjson for registry push
+                         # kubectl create secret docker-registry ghcr-push \
+                         #   --docker-server=ghcr.io \
+                         #   --docker-username=<user> \
+                         #   --docker-password=<PAT> \
+                         #   -n notebook-web
+  kanikoImage: "gcr.io/kaniko-project/executor:latest"
+  cacheConfigMapName: "notebook-session-image-cache"
 
 # ── Kubernetes namespace for session pods ─────────────────────────────────────
 namespace: default

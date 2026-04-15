@@ -14,3 +14,11 @@ rules:
   - apiGroups: [""]
     resources: ["pods/log"]
     verbs: ["get", "list"]
+  # Image build cache and kaniko build context
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["create", "get", "patch", "update"]
+  # Registry push secret (read-only)
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get"]
