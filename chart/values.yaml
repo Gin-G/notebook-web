@@ -4,6 +4,7 @@ notebooks:
     repo: "https://github.com/org/notebooks.git"
     ref: "main"
     path: "climate/analysis.ipynb"
+    envFile: "climate/environment.yml"  # explicit conda env; omit to auto-discover
     description: "Exploratory analysis of global surface temperature datasets"
     tags: ["python", "climate", "pandas"]
     resources:
@@ -18,6 +19,7 @@ notebooks:
     repo: "https://github.com/org/notebooks.git"
     ref: "main"
     path: "ml/basics.ipynb"
+    # envFile: ""  # leave empty to auto-discover requirements.txt / environment.yml
     description: "Introduction to scikit-learn: classification, regression, and evaluation"
     tags: ["python", "machine-learning", "scikit-learn"]
     

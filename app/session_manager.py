@@ -69,23 +69,45 @@ class SessionManager:
             return slug[:max_len].rstrip("-")
 
         nb_dir = str(notebook.path).rsplit("/", 1)[0] if "/" in notebook.path else "."
+
+        if notebook.envFile:
+            # Explicit path — copy whatever the user specified
+            copy_env = (
+                f"if [ -f /tmp/repo/{notebook.envFile} ]; then"
+                f" cp /tmp/repo/{notebook.envFile} /notebook/$(basename {notebook.envFile});"
+                " fi"
+            )
+        else:
+            # Auto-discover: pip first, then conda, notebook dir before repo root
+            copy_env = (
+                f"_env='';"
+                f" for _f in"
+                f" /tmp/repo/{nb_dir}/requirements.txt"
+                f" /tmp/repo/requirements.txt"
+                f" /tmp/repo/{nb_dir}/environment.yml"
+                f" /tmp/repo/environment.yml"
+                f" /tmp/repo/{nb_dir}/environment.yaml"
+                f" /tmp/repo/environment.yaml; do"
+                f" if [ -f \"$_f\" ]; then _env=\"$_f\"; break; fi; done;"
+                f" if [ -n \"$_env\" ]; then cp \"$_env\" /notebook/$(basename \"$_env\"); fi"
+            )
+
         fetch_cmd = (
             "git clone --depth=1 --single-branch"
             f" --branch {notebook.ref}"
             f" {notebook.repo} /tmp/repo"
             " && mkdir -p /notebook"
             f" && cp /tmp/repo/{notebook.path} /notebook/notebook.ipynb"
-            # Copy requirements.txt: notebook dir first, repo root as fallback
-            f" && if [ -f /tmp/repo/{nb_dir}/requirements.txt ]; then"
-            f"   cp /tmp/repo/{nb_dir}/requirements.txt /notebook/requirements.txt;"
-            " elif [ -f /tmp/repo/requirements.txt ]; then"
-            "   cp /tmp/repo/requirements.txt /notebook/requirements.txt;"
-            " fi"
+            f" && {copy_env}"
         )
 
-        pip_install_cmd = (
+        install_cmd = (
             "if [ -f /notebook/requirements.txt ]; then"
-            " pip install --quiet --no-cache-dir -r /notebook/requirements.txt; fi"
+            "  pip install --quiet --no-cache-dir -r /notebook/requirements.txt;"
+            "elif [ -f /notebook/environment.yml ] || [ -f /notebook/environment.yaml ]; then"
+            "  _ef=$(ls /notebook/environment.yml /notebook/environment.yaml 2>/dev/null | head -1);"
+            "  conda env update --name base --file \"$_ef\" --prune;"
+            "fi"
         )
 
         return k8s.V1Pod(
@@ -113,7 +135,7 @@ class SessionManager:
                     k8s.V1Container(
                         name="pip-installer",
                         image=sd.image,
-                        command=["sh", "-c", pip_install_cmd],
+                        command=["sh", "-c", install_cmd],
                         volume_mounts=[
                             k8s.V1VolumeMount(name="notebook-data", mount_path="/notebook")
                         ],

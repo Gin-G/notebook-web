@@ -25,6 +25,7 @@ class NotebookEntry(BaseModel):
     repo: str
     ref: str = "main"
     path: str
+    envFile: str = ""   # explicit path to requirements.txt or environment.yml; auto-discovered if empty
     tags: List[str] = []
     description: str = ""
     resources: Optional[Resources] = None
