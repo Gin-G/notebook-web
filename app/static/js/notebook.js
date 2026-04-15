@@ -69,11 +69,29 @@
       renderAllCells(nb, container);
       setStep('step-notebook', 'done');
 
-      setStep('step-pod', 'active');
-      setLoadingSub('Creating session pod…');
-      const session = await createSession();
+      // Resume an existing session if one was in progress (e.g. page reload after timeout)
+      const savedSessionId = sessionStorage.getItem(`session:${CFG.notebookId}`);
+      let session = null;
+      if (savedSessionId) {
+        const resp = await fetch(`/api/sessions/${savedSessionId}`);
+        if (resp.ok) {
+          const s = await resp.json();
+          if (s.status !== 'error' && s.status !== 'terminating') {
+            session = s;
+            setStep('step-pod', 'done');
+            setLoadingSub('Resuming existing session…');
+          }
+        }
+      }
+
+      if (!session) {
+        setStep('step-pod', 'active');
+        setLoadingSub('Creating session pod…');
+        session = await createSession();
+        sessionStorage.setItem(`session:${CFG.notebookId}`, session.session_id);
+        setStep('step-pod', 'done');
+      }
       state.session = session;
-      setStep('step-pod', 'done');
 
       setStep('step-kernel', 'active');
       setLoadingSub('Waiting for kernel…');
@@ -135,7 +153,7 @@
     return resp.json();
   }
 
-  async function pollUntilRunning(sessionId, timeoutMs = 900_000) {
+  async function pollUntilRunning(sessionId, timeoutMs = 1_800_000) {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       const resp = await fetch(`/api/sessions/${sessionId}`);
@@ -159,6 +177,7 @@
       setKernelStatus('error', 'Disconnected');
       qs('#btn-run-all').disabled = true;
       qs('#btn-interrupt').disabled = true;
+      sessionStorage.removeItem(`session:${CFG.notebookId}`);
     };
     await kernel.connect(sessionId);
     state.kernel = kernel;
@@ -423,6 +442,7 @@
         if (state.session) {
           await fetch(`/api/sessions/${state.session.session_id}`, { method: 'DELETE' }).catch(() => {});
         }
+        sessionStorage.removeItem(`session:${CFG.notebookId}`);
         location.href = '/';
       });
     }
