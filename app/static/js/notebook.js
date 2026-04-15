@@ -77,7 +77,12 @@
 
       setStep('step-kernel', 'active');
       setLoadingSub('Waiting for kernel…');
+      // Warn after 15s that a first-launch environment build may be in progress
+      const slowTimer = setTimeout(() => {
+        setLoadingSub('This may take a few minutes — building the notebook environment for the first time…');
+      }, 15000);
       await pollUntilRunning(session.session_id);
+      clearTimeout(slowTimer);
       setStep('step-kernel', 'done');
 
       setStep('step-connect', 'active');
@@ -130,7 +135,7 @@
     return resp.json();
   }
 
-  async function pollUntilRunning(sessionId, timeoutMs = 120_000) {
+  async function pollUntilRunning(sessionId, timeoutMs = 900_000) {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       const resp = await fetch(`/api/sessions/${sessionId}`);
