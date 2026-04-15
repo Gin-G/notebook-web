@@ -111,10 +111,12 @@ class SessionManager:
 
         install_cmd = (
             "if [ -f /notebook/requirements.txt ]; then"
-            "  pip install --no-cache-dir -r /notebook/requirements.txt;"
+            "  pip install --no-cache-dir -r /notebook/requirements.txt 2>&1;"
             "elif [ -f /notebook/environment.yml ] || [ -f /notebook/environment.yaml ]; then"
             "  _ef=$(ls /notebook/environment.yml /notebook/environment.yaml 2>/dev/null | head -1);"
-            "  conda env update --name base --file \"$_ef\" --prune;"
+            "  conda env update --name base --file \"$_ef\" --prune 2>&1;"
+            "else"
+            "  echo 'No requirements file found, skipping install';"
             "fi"
         )
 
@@ -131,6 +133,10 @@ class SessionManager:
                 name="pip-installer",
                 image=jupyter_image,
                 command=["sh", "-c", install_cmd],
+                env=[
+                    k8s.V1EnvVar(name="PYTHONUNBUFFERED", value="1"),
+                    k8s.V1EnvVar(name="CONDA_VERBOSITY", value="1"),
+                ],
                 volume_mounts=[k8s.V1VolumeMount(name="notebook-data", mount_path="/notebook")],
             ))
 
