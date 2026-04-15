@@ -114,7 +114,9 @@ class SessionManager:
             "  pip install --no-cache-dir -r /notebook/requirements.txt 2>&1;"
             "elif [ -f /notebook/environment.yml ] || [ -f /notebook/environment.yaml ]; then"
             "  _ef=$(ls /notebook/environment.yml /notebook/environment.yaml 2>/dev/null | head -1);"
-            "  conda env update --name base --file \"$_ef\" --prune 2>&1;"
+            # Strip the name field so conda always installs into base regardless of what the file declares
+            "  sed '/^name:/d' \"$_ef\" > /tmp/env-base.yml;"
+            "  conda env update --name base --file /tmp/env-base.yml --prune 2>&1;"
             "else"
             "  echo 'No requirements file found, skipping install';"
             "fi"
