@@ -80,7 +80,12 @@
             session = s;
             setStep('step-pod', 'done');
             setLoadingSub('Resuming existing session…');
+          } else {
+            sessionStorage.removeItem(`session:${CFG.notebookId}`);
           }
+        } else {
+          // Session no longer exists (app restarted, pod reaped, etc.) — start fresh
+          sessionStorage.removeItem(`session:${CFG.notebookId}`);
         }
       }
 
@@ -157,6 +162,10 @@
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       const resp = await fetch(`/api/sessions/${sessionId}`);
+      if (resp.status === 404) {
+        sessionStorage.removeItem(`session:${CFG.notebookId}`);
+        throw new Error('Session no longer exists — please reload to start a new one');
+      }
       if (!resp.ok) throw new Error('Session status check failed');
       const s = await resp.json();
       if (s.status === 'running') return s;
