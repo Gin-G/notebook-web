@@ -61,7 +61,7 @@ ingress:
 # ── Application image ─────────────────────────────────────────────────────────
 image:
   repository: ghcr.io/gin-g/notebook-web
-  tag: 78d2d79
+  tag: b8ecbb3
   pullPolicy: IfNotPresent
 
 # ── Session image auto-builder ────────────────────────────────────────────────
