@@ -169,6 +169,14 @@
       const entry = renderCell(cell, idx, container, readOnly);
       state.cells.push(entry);
     });
+    // CodeMirror calculates dimensions at creation time; if the container
+    // isn't fully painted yet those measurements are wrong and the editor
+    // appears blank until clicked. A single rAF flush fixes it.
+    requestAnimationFrame(() => {
+      for (const entry of state.cells) {
+        entry.editorInstance?.refresh();
+      }
+    });
   }
 
   function renderCell(cell, idx, container, readOnly) {
