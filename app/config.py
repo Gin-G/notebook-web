@@ -64,12 +64,18 @@ class ImageConfig(BaseModel):
     tag: str = "latest"
 
 
+class BuildConfig(BaseModel):
+    registry: str = ""        # image name prefix, e.g. ghcr.io/org/repo/sessions
+    pushSecretName: str = ""  # K8s Secret with .dockerconfigjson for registry push
+
+
 class AppConfig(BaseModel):
     notebooks: List[NotebookEntry] = []
     sessionDefaults: SessionDefaults = SessionDefaults()
     theme: Theme = Theme()
     ingress: IngressConfig = IngressConfig()
     image: ImageConfig = ImageConfig()
+    build: BuildConfig = BuildConfig()
     namespace: str = "default"
     cacheDir: str = "/tmp/notebook-cache"
 

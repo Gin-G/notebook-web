@@ -39,6 +39,7 @@ class SessionManager:
         self._sessions: Dict[str, Session] = {}
         self._lock = asyncio.Lock()
         self._k8s_api: Optional[k8s.CoreV1Api] = None
+        self.build_mgr = None  # set by main.py after startup
 
     # ── Kubernetes client ──────────────────────────────────────────────────
 
@@ -151,6 +152,15 @@ class SessionManager:
                 )
 
         session_id = str(uuid.uuid4())
+
+        # Use pre-built image if the build manager has one ready
+        if self.build_mgr:
+            prebuilt = self.build_mgr.get_image(notebook)
+            if prebuilt:
+                log.info("Using pre-built image %s for notebook '%s'", prebuilt, notebook.name)
+                # Temporarily set image on notebook for pod spec generation
+                notebook = notebook.model_copy(update={"image": prebuilt})
+
         pod_spec = self._pod_spec(session_id, notebook)
 
         session = Session(

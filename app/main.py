@@ -43,6 +43,18 @@ async def lifespan(app: FastAPI):
     log.info("Starting notebook gallery — %d notebook(s) configured", len(config.notebooks))
     config.notebooks = await sync_all(config.cacheDir)
 
+    # Pre-build session images for all notebooks (runs in background)
+    if config.build.registry:
+        from .build_manager import BuildManager
+        from kubernetes import client as k8s_client, config as k8s_cfg
+        try:
+            k8s_cfg.load_incluster_config()
+        except Exception:
+            k8s_cfg.load_kube_config()
+        build_mgr = BuildManager(config, k8s_client.CoreV1Api())
+        session_mgr.build_mgr = build_mgr
+        asyncio.create_task(build_mgr.build_all(config.notebooks))
+
     asyncio.create_task(session_mgr.reaper_task())
     asyncio.create_task(_periodic_sync())
 
@@ -63,6 +75,8 @@ async def _periodic_sync() -> None:
         await asyncio.sleep(3600)
         try:
             config.notebooks = await sync_all(config.cacheDir)
+            if session_mgr.build_mgr:
+                asyncio.create_task(session_mgr.build_mgr.build_all(config.notebooks))
         except Exception as e:
             log.error("Periodic sync error: %s", e)
 

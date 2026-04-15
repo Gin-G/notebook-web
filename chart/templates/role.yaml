@@ -14,3 +14,15 @@ rules:
   - apiGroups: [""]
     resources: ["pods/log"]
     verbs: ["get", "list"]
+  # Image build jobs (repo2docker)
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "delete", "get", "list", "watch"]
+  # Image build cache (persists built image names across restarts)
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["create", "get", "patch", "update"]
+  # Registry push secret (read-only)
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get"]

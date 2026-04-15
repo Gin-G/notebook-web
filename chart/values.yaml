@@ -6,7 +6,6 @@ notebooks:
     path: "climate/analysis.ipynb"
     description: "Exploratory analysis of global surface temperature datasets"
     tags: ["python", "climate", "pandas"]
-    # image: ""   # auto-populated by the build-sessions CI workflow
     resources:
       limits:
         cpu: "2"
@@ -21,7 +20,6 @@ notebooks:
     path: "ml/basics.ipynb"
     description: "Introduction to scikit-learn: classification, regression, and evaluation"
     tags: ["python", "machine-learning", "scikit-learn"]
-    # image: ""   # auto-populated by the build-sessions CI workflow
     
 # ── Session defaults ──────────────────────────────────────────────────────────
 sessionDefaults:
@@ -62,6 +60,19 @@ image:
   repository: ghcr.io/gin-g/notebook-web
   tag: "a3d028b"
   pullPolicy: IfNotPresent
+
+# ── Session image pre-builder ─────────────────────────────────────────────────
+# On startup the app launches one repo2docker build Job per unique (repo, ref).
+# Built images are cached in a ConfigMap and reused across restarts.
+# Leave registry empty to disable pre-builds (sessions fall back to base image).
+build:
+  registry: ""           # e.g. ghcr.io/org/notebook-web/sessions
+  pushSecretName: ""     # K8s Secret with .dockerconfigjson for pushing images
+                         # kubectl create secret docker-registry ghcr-push \
+                         #   --docker-server=ghcr.io \
+                         #   --docker-username=<user> \
+                         #   --docker-password=<PAT> \
+                         #   -n <namespace>
 
 # ── Kubernetes namespace for session pods ─────────────────────────────────────
 namespace: default
