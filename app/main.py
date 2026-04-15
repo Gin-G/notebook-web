@@ -49,10 +49,13 @@ async def lifespan(app: FastAPI):
     yield
 
     for s in session_mgr.list_sessions():
-        try:
-            await session_mgr.delete_session(s.session_id)
-        except Exception:
-            pass
+        # Leave pending/starting pods alive — they belong to users and will
+        # be picked up by the new app instance via session resume.
+        if s.status in ("running", "error"):
+            try:
+                await session_mgr.delete_session(s.session_id)
+            except Exception:
+                pass
 
 
 async def _periodic_sync() -> None:
