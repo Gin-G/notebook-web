@@ -111,7 +111,7 @@ class SessionManager:
 
         install_cmd = (
             "if [ -f /notebook/requirements.txt ]; then"
-            "  pip install --quiet --no-cache-dir -r /notebook/requirements.txt;"
+            "  pip install --no-cache-dir -r /notebook/requirements.txt;"
             "elif [ -f /notebook/environment.yml ] || [ -f /notebook/environment.yaml ]; then"
             "  _ef=$(ls /notebook/environment.yml /notebook/environment.yaml 2>/dev/null | head -1);"
             "  conda env update --name base --file \"$_ef\" --prune;"
@@ -292,7 +292,7 @@ class SessionManager:
                     to_delete.append(sid)
             elif s.status == "error":
                 age = (now - s.created_at).total_seconds()
-                if age > 300:
+                if age > 1800:  # keep error pods for 30 min so logs stay readable
                     to_delete.append(sid)
         for sid in to_delete:
             await self.delete_session(sid)
