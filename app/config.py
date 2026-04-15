@@ -64,20 +64,12 @@ class ImageConfig(BaseModel):
     tag: str = "latest"
 
 
-class BuildConfig(BaseModel):
-    registry: str = ""          # image prefix, e.g. ghcr.io/gin-g/notebook-web/sessions
-    pushSecretName: str = ""    # K8s secret holding .dockerconfigjson for registry push
-    kanikoImage: str = "gcr.io/kaniko-project/executor:latest"
-    cacheConfigMapName: str = "notebook-session-image-cache"
-
-
 class AppConfig(BaseModel):
     notebooks: List[NotebookEntry] = []
     sessionDefaults: SessionDefaults = SessionDefaults()
     theme: Theme = Theme()
     ingress: IngressConfig = IngressConfig()
     image: ImageConfig = ImageConfig()
-    build: BuildConfig = BuildConfig()
     namespace: str = "default"
     cacheDir: str = "/tmp/notebook-cache"
 
