@@ -68,12 +68,24 @@ class SessionManager:
             slug = re.sub(r"[^A-Za-z0-9_.-]", "-", value).strip("-")
             return slug[:max_len].rstrip("-")
 
+        nb_dir = str(notebook.path).rsplit("/", 1)[0] if "/" in notebook.path else "."
         fetch_cmd = (
             "git clone --depth=1 --single-branch"
             f" --branch {notebook.ref}"
             f" {notebook.repo} /tmp/repo"
             " && mkdir -p /notebook"
             f" && cp /tmp/repo/{notebook.path} /notebook/notebook.ipynb"
+            # Copy requirements.txt: notebook dir first, repo root as fallback
+            f" && if [ -f /tmp/repo/{nb_dir}/requirements.txt ]; then"
+            f"   cp /tmp/repo/{nb_dir}/requirements.txt /notebook/requirements.txt;"
+            " elif [ -f /tmp/repo/requirements.txt ]; then"
+            "   cp /tmp/repo/requirements.txt /notebook/requirements.txt;"
+            " fi"
+        )
+
+        pip_install_cmd = (
+            "if [ -f /notebook/requirements.txt ]; then"
+            " pip install --quiet --no-cache-dir -r /notebook/requirements.txt; fi"
         )
 
         return k8s.V1Pod(
@@ -97,7 +109,15 @@ class SessionManager:
                         volume_mounts=[
                             k8s.V1VolumeMount(name="notebook-data", mount_path="/notebook")
                         ],
-                    )
+                    ),
+                    k8s.V1Container(
+                        name="pip-installer",
+                        image=sd.image,
+                        command=["sh", "-c", pip_install_cmd],
+                        volume_mounts=[
+                            k8s.V1VolumeMount(name="notebook-data", mount_path="/notebook")
+                        ],
+                    ),
                 ],
                 containers=[
                     k8s.V1Container(
