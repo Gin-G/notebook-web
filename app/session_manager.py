@@ -116,7 +116,7 @@ class SessionManager:
             "  _ef=$(ls /notebook/environment.yml /notebook/environment.yaml 2>/dev/null | head -1);"
             # Strip the name field so conda always installs into base regardless of what the file declares
             "  sed '/^name:/d' \"$_ef\" > /tmp/env-base.yml;"
-            "  conda env update --name base --file /tmp/env-base.yml --prune 2>&1;"
+            "  conda env update --name base --file /tmp/env-base.yml 2>&1;"
             "else"
             "  echo 'No requirements file found, skipping install';"
             "fi"
