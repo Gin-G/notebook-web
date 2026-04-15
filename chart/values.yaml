@@ -35,7 +35,7 @@ sessionDefaults:
       memory: "512Mi"
   idleTimeoutMinutes: 30
   maxSessions: 20
-  kernelStartupTimeoutSeconds: 120
+  kernelStartupTimeoutSeconds: 600
 
 # ── Theme ─────────────────────────────────────────────────────────────────────
 theme:
