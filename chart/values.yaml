@@ -82,6 +82,7 @@ cacheDir: /tmp/notebook-cache
 
 # ── Deployment settings ───────────────────────────────────────────────────────
 replicaCount: 1
+revisionHistoryLimit: 3
 
 podAnnotations: {}
 podSecurityContext:
