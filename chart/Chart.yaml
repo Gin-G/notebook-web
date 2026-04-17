@@ -12,3 +12,9 @@ keywords:
 maintainers:
   - name: notebook-gallery
 home: https://github.com/org/notebook-gallery
+
+dependencies:
+  - name: buildkit-service
+    version: "1.4.0"
+    repository: https://andrcuns.github.io/charts
+    condition: build.enabled

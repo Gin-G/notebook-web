@@ -66,6 +66,7 @@ image:
 # Built images are cached in a ConfigMap and reused across restarts.
 # Leave registry empty to disable pre-builds (sessions fall back to base image).
 build:
+  enabled: false
   registry: ""           # e.g. ghcr.io/org/notebook-web/sessions
   pushSecretName: ""     # K8s Secret with .dockerconfigjson for pushing images
                          # kubectl create secret docker-registry ghcr-push \
@@ -73,6 +74,15 @@ build:
                          #   --docker-username=<user> \
                          #   --docker-password=<PAT> \
                          #   -n <namespace>
+  buildkitServiceName: "" # defaults to <release>-buildkit-service
+
+# ── BuildKit service (subchart) ───────────────────────────────────────────────
+# Deployed alongside the app when build.enabled=true.
+# Full values reference: https://andrcuns.github.io/charts
+buildkit-service:
+  replicaCount: 1
+  service:
+    port: 1234
 
 # ── Kubernetes namespace for session pods ─────────────────────────────────────
 namespace: default

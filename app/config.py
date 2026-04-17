@@ -65,8 +65,10 @@ class ImageConfig(BaseModel):
 
 
 class BuildConfig(BaseModel):
-    registry: str = ""        # image name prefix, e.g. ghcr.io/org/repo/sessions
-    pushSecretName: str = ""  # K8s Secret with .dockerconfigjson for registry push
+    enabled: bool = False
+    registry: str = ""            # image name prefix, e.g. ghcr.io/org/repo/sessions
+    pushSecretName: str = ""      # K8s Secret with .dockerconfigjson for pushing images
+    buildkitServiceName: str = "" # defaults to <release-name>-buildkit-service
 
 
 class AppConfig(BaseModel):
