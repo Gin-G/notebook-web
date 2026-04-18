@@ -100,9 +100,11 @@
 
       setStep('step-kernel', 'active');
       setLoadingSub('Waiting for kernel…');
-      // Warn after 15s that a first-launch environment build may be in progress
       const slowTimer = setTimeout(() => {
-        setLoadingSub('This may take a few minutes — building the notebook environment for the first time…');
+        const msg = session.image_ready
+          ? 'Almost there — waiting for the kernel to start…'
+          : 'This may take a few minutes — building the notebook environment for the first time…';
+        setLoadingSub(msg);
       }, 15000);
       await pollUntilRunning(session.session_id);
       clearTimeout(slowTimer);

@@ -68,8 +68,13 @@ class SessionManager:
             slug = re.sub(r"[^A-Za-z0-9_.-]", "-", value).strip("-")
             return slug[:max_len].rstrip("-")
 
-        # Pre-built image from CI (values.yaml `image:`) or fall back to default
+        # Pre-built image from build manager / values.yaml, or fall back to default
         jupyter_image = notebook.image or sd.image
+        pull_secrets = (
+            [k8s.V1LocalObjectReference(name=self.config.build.pushSecretName)]
+            if self.config.build.pushSecretName and jupyter_image != sd.image
+            else []
+        )
 
         # Fetch the notebook file from git into /notebook
         fetch_cmd = (
@@ -102,6 +107,7 @@ class SessionManager:
             ),
             spec=k8s.V1PodSpec(
                 restart_policy="Never",
+                image_pull_secrets=pull_secrets or None,
                 init_containers=init_containers,
                 containers=[
                     k8s.V1Container(

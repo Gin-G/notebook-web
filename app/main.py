@@ -44,7 +44,7 @@ async def lifespan(app: FastAPI):
     config.notebooks = await sync_all(config.cacheDir)
 
     # Pre-build session images for all notebooks (runs in background)
-    if config.build.registry:
+    if config.build.enabled and config.build.registry:
         from .build_manager import BuildManager
         from kubernetes import client as k8s_client, config as k8s_cfg
         try:
@@ -53,6 +53,9 @@ async def lifespan(app: FastAPI):
             k8s_cfg.load_kube_config()
         build_mgr = BuildManager(config, k8s_client.CoreV1Api())
         session_mgr.build_mgr = build_mgr
+        # Load the cache now so sessions created immediately after startup
+        # use pre-built images rather than falling back to the base image.
+        await build_mgr._load_cache()
         asyncio.create_task(build_mgr.build_all(config.notebooks))
 
     asyncio.create_task(session_mgr.reaper_task())
@@ -176,6 +179,9 @@ async def create_session(req: CreateSessionRequest):
     nb = _find(req.notebook_id)
     if not nb:
         raise HTTPException(404, "Notebook not found")
+    image_ready = bool(nb.image) or bool(
+        session_mgr.build_mgr and session_mgr.build_mgr.get_image(nb)
+    )
     try:
         session = await session_mgr.create_session(nb)
     except RuntimeError as e:
@@ -184,6 +190,7 @@ async def create_session(req: CreateSessionRequest):
         "session_id": session.session_id,
         "notebook_id": session.notebook_id,
         "status": session.status,
+        "image_ready": image_ready,
     }
 
 
