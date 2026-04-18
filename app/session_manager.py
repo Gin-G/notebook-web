@@ -119,6 +119,7 @@ class SessionManager:
                             "--port=8888",
                             "--ServerApp.root_dir=/notebook",
                         ],
+                        env=[k8s.V1EnvVar(name="ENV_NAME", value="base")],
                         ports=[k8s.V1ContainerPort(container_port=8888, name="http")],
                         resources=k8s.V1ResourceRequirements(
                             limits={"cpu": res.limits.cpu, "memory": res.limits.memory},

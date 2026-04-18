@@ -2,18 +2,21 @@
 Pre-builds session images for every notebook in the catalog.
 
 On startup, BuildManager.build_all() launches one Kubernetes Job per unique
-(repo, ref) pair. Each job uses BuildKit (packaged as a chart dependency) to
-build images without requiring privileged containers or a Docker daemon.
+(repo, ref) pair.
 
 Job structure:
-  init container (alpine/git)
-    - clones the repo
-    - detects environment files (environment.yml / requirements.txt)
-    - writes a Dockerfile + build context to /workspace
+  init container 1 (alpine/git)
+    - clones the repo to /workspace/repo
+
+  init container 2 (quay.io/jupyter/repo2docker)
+    - runs repo2docker in dry-run mode to generate a complete Dockerfile +
+      build context from the repo's environment files (environment.yml,
+      requirements.txt, etc.)
+    - writes the context to /workspace/context and exits before building
 
   main container (alpine + buildctl)
     - connects to the in-cluster BuildKit service
-    - builds the image and pushes it to the configured registry
+    - builds the image from /workspace/context and pushes to the registry
 
 Results are cached in a ConfigMap so restarts skip already-built images.
 
@@ -43,8 +46,7 @@ CACHE_CM_NAME = "notebook-image-cache"
 JOB_LABEL = "app.kubernetes.io/managed-by"
 JOB_VALUE = "notebook-gallery-builder"
 
-# buildctl is downloaded at job time from the official release.
-# Pin a version matching the packaged buildkit-service chart (1.4.0 -> v0.28.1).
+# Pin buildctl version to match the packaged buildkit-service chart (1.4.0 → v0.28.1).
 BUILDCTL_VERSION = "v0.28.1"
 BUILDCTL_URL = (
     f"https://github.com/moby/buildkit/releases/download/{BUILDCTL_VERSION}"
@@ -174,73 +176,56 @@ class BuildManager:
 
         log.info("Building %s  ←  %s @ %s", image, repo, ref)
 
-        # ── Init container: clone repo and write Dockerfile ──────────────────
-        #
-        # Detects environment files in order of preference:
-        #   1. environment.yml / environment.yaml  → conda install
-        #   2. requirements.txt                    → pip install
-        #   3. neither                             → base image only (no deps)
-        #
-        # Writes the Dockerfile and any needed files to /workspace/context.
-
-        prepare_cmd = rf"""
-set -e
-git clone --depth=1 --single-branch --branch {ref} {repo} /tmp/repo
-
-REPO=/tmp/repo
-CTX=/workspace/context
-mkdir -p $CTX
-
-# Find env file (repo-root takes precedence over subdir)
-ENV_FILE=""
-for f in \
-    $REPO/environment.yml \
-    $REPO/environment.yaml \
-    $REPO/binder/environment.yml \
-    $REPO/binder/environment.yaml; do
-  if [ -f "$f" ]; then ENV_FILE="$f"; break; fi
-done
-
-REQ_FILE=""
-for f in $REPO/requirements.txt $REPO/binder/requirements.txt; do
-  if [ -f "$f" ]; then REQ_FILE="$f"; break; fi
-done
-
-if [ -n "$ENV_FILE" ]; then
-  cp "$ENV_FILE" $CTX/environment.yml
-  # Strip 'name:' so conda always installs into base
-  sed '/^name:/d' $CTX/environment.yml > $CTX/env-base.yml
-  cat > $CTX/Dockerfile << 'DOCKERFILE'
-FROM jupyter/minimal-notebook:latest
-USER root
-COPY env-base.yml /tmp/env-base.yml
-RUN conda env update --name base --file /tmp/env-base.yml \
-    && conda clean -afy
-USER ${{NB_USER}}
-DOCKERFILE
-elif [ -n "$REQ_FILE" ]; then
-  cp "$REQ_FILE" $CTX/requirements.txt
-  cat > $CTX/Dockerfile << 'DOCKERFILE'
-FROM jupyter/minimal-notebook:latest
-COPY requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir -r /tmp/requirements.txt
-DOCKERFILE
-else
-  echo "No environment file found — using base image"
-  cat > $CTX/Dockerfile << 'DOCKERFILE'
-FROM jupyter/minimal-notebook:latest
-DOCKERFILE
-fi
-
-echo "=== Dockerfile ===" && cat $CTX/Dockerfile
-""".strip()
-
-        # ── Main container: build with buildctl ──────────────────────────────
-        #
-        # Downloads the buildctl binary (matching the packaged buildkit-service
-        # version) and runs the build against the in-cluster BuildKit daemon.
-
         buildkit_addr = self._buildkit_addr()
+
+        # ── Init 1: clone repo ────────────────────────────────────────────────
+        clone_cmd = (
+            f"git clone --depth=1 --single-branch --branch {ref} {repo} /workspace/repo"
+        )
+
+        # ── Init 2: generate build context via repo2docker ───────────────────
+        #
+        # repo2docker detects all environment specs (environment.yml,
+        # requirements.txt, apt.txt, postBuild, etc.) and generates a complete
+        # Dockerfile + build context in a temp dir. We intercept mkdtemp so we
+        # can copy the context to /workspace/context before repo2docker cleans
+        # it up, then exit before it tries to call docker build.
+        generate_cmd = rf"""
+python3 - << 'PYEOF'
+import sys, os, shutil, tempfile, logging
+
+logging.getLogger("repo2docker").setLevel(logging.WARNING)
+
+_orig = tempfile.mkdtemp
+_dirs = []
+def _capture(*a, **kw):
+    d = _orig(*a, **kw)
+    _dirs.append(d)
+    return d
+tempfile.mkdtemp = _capture
+
+from repo2docker import Repo2Docker
+
+r2d = Repo2Docker()
+r2d.repo = "/workspace/repo"
+r2d.output_image_spec = "{image}"
+r2d.dry_run = True
+
+try:
+    r2d.initialize([])
+    r2d.start()
+except (SystemExit, Exception):
+    pass
+
+for d in reversed(_dirs):
+    if os.path.isfile(os.path.join(d, "Dockerfile")):
+        shutil.copytree(d, "/workspace/context", dirs_exist_ok=True)
+        print(f"context written to /workspace/context (from {{d}})", flush=True)
+        sys.exit(0)
+
+sys.exit("repo2docker did not produce a Dockerfile")
+PYEOF
+""".strip()
         build_cmd = rf"""
 set -e
 echo "Downloading buildctl {BUILDCTL_VERSION}..."
@@ -256,12 +241,11 @@ buildctl \
   --output type=image,name={image},push=true
 """.strip()
 
-        # Registry credentials volume
+        ws_mount = k8s.V1VolumeMount(name="workspace", mount_path="/workspace")
         volumes: list[k8s.V1Volume] = [
             k8s.V1Volume(name="workspace", empty_dir=k8s.V1EmptyDirVolumeSource())
         ]
-        init_mounts = [k8s.V1VolumeMount(name="workspace", mount_path="/workspace")]
-        main_mounts = [k8s.V1VolumeMount(name="workspace", mount_path="/workspace")]
+        main_mounts = [ws_mount]
 
         if self.config.build.pushSecretName:
             volumes.append(k8s.V1Volume(
@@ -288,11 +272,17 @@ buildctl \
                         restart_policy="Never",
                         init_containers=[
                             k8s.V1Container(
-                                name="prepare",
+                                name="clone",
                                 image="alpine/git:latest",
-                                command=["sh", "-c", prepare_cmd],
-                                volume_mounts=init_mounts,
-                            )
+                                command=["sh", "-c", clone_cmd],
+                                volume_mounts=[ws_mount],
+                            ),
+                            k8s.V1Container(
+                                name="generate-context",
+                                image="quay.io/jupyter/repo2docker:latest",
+                                command=["sh", "-c", generate_cmd],
+                                volume_mounts=[ws_mount],
+                            ),
                         ],
                         containers=[
                             k8s.V1Container(
