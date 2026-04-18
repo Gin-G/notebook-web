@@ -44,11 +44,17 @@
   {% if notebooks %}
   <div class="notebook-grid" id="notebook-grid">
     {% for nb in notebooks %}
-    <article class="notebook-card"
+    <article class="notebook-card{% if nb.thumbnail %} has-thumbnail{% endif %}"
              data-id="{{ nb.id }}"
              data-name="{{ nb.name | lower }}"
              data-desc="{{ nb.description | lower }}"
              data-tags="{{ nb.tags | join(' ') | lower }}">
+
+      {% if nb.thumbnail %}
+      <div class="card-thumbnail">
+        <img src="{{ nb.thumbnail }}" alt="{{ nb.name }} preview" loading="lazy">
+      </div>
+      {% endif %}
 
       <div class="card-header">
         <div class="card-icon" aria-hidden="true">

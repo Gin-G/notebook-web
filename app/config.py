@@ -27,6 +27,7 @@ class NotebookEntry(BaseModel):
     path: str
     envFile: str = ""   # explicit path to requirements.txt or environment.yml; auto-discovered if empty
     image: str = ""     # pre-built session image; skips env install entirely when set
+    thumbnail: str = "" # URL for card preview image (optional)
     tags: List[str] = []
     description: str = ""
     resources: Optional[Resources] = None

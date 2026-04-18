@@ -106,6 +106,7 @@ async def gallery(request: Request):
             "name": nb.name,
             "description": nb.description,
             "tags": nb.tags,
+            "thumbnail": nb.thumbnail,
         }
         for nb in config.notebooks
     ]

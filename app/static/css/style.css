@@ -244,6 +244,25 @@ a:hover { text-decoration: underline; }
   gap: .875rem;
   transition: box-shadow var(--transition), transform var(--transition), border-color var(--transition);
   position: relative;
+  overflow: hidden;
+}
+
+.card-thumbnail {
+  margin: -1.25rem -1.25rem 0;
+  height: 160px;
+  overflow: hidden;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  background: var(--border-subtle);
+}
+.card-thumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.3s ease;
+}
+.notebook-card:hover .card-thumbnail img {
+  transform: scale(1.04);
 }
 .notebook-card:hover {
   box-shadow: var(--shadow);
