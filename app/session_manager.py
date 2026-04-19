@@ -13,11 +13,27 @@ import aiohttp
 from kubernetes import client as k8s, config as k8s_config
 
 from .config import AppConfig, NotebookEntry
+from .notebook_fetcher import find_env_file
 
 log = logging.getLogger(__name__)
 
 MANAGED_BY_LABEL = "app.kubernetes.io/managed-by"
 MANAGED_BY_VALUE = "notebook-gallery"
+
+
+def _conda_env_name(env_file) -> str:
+    """Return the conda env name from an environment.yml, or 'base' as fallback."""
+    if env_file and env_file.suffix in (".yml", ".yaml"):
+        try:
+            import yaml
+            with open(env_file) as f:
+                data = yaml.safe_load(f)
+            name = (data or {}).get("name", "")
+            if name:
+                return name
+        except Exception:
+            pass
+    return "base"
 
 
 @dataclass
@@ -70,11 +86,23 @@ class SessionManager:
 
         # Pre-built image from build manager / values.yaml, or fall back to default
         jupyter_image = notebook.image or sd.image
+        using_prebuilt = jupyter_image != sd.image
         pull_secrets = (
             [k8s.V1LocalObjectReference(name=self.config.build.pushSecretName)]
-            if self.config.build.pushSecretName and jupyter_image != sd.image
+            if self.config.build.pushSecretName and using_prebuilt
             else []
         )
+
+        # For pre-built repo2docker images, ENV_NAME is already baked into the
+        # image — overriding it would activate the wrong conda env. For the
+        # fallback base image, read the name from the repo's environment.yml so
+        # at least the right env name is communicated (packages still won't be
+        # present, but activation won't mask it). Fall back to "base".
+        if using_prebuilt:
+            env_vars = []
+        else:
+            env_name = _conda_env_name(find_env_file(notebook, self.config.cacheDir))
+            env_vars = [k8s.V1EnvVar(name="ENV_NAME", value=env_name)]
 
         # Fetch the notebook file from git into /notebook
         fetch_cmd = (
@@ -125,7 +153,7 @@ class SessionManager:
                             "--port=8888",
                             "--ServerApp.root_dir=/notebook",
                         ],
-                        env=[k8s.V1EnvVar(name="ENV_NAME", value="base")],
+                        env=env_vars or None,
                         ports=[k8s.V1ContainerPort(container_port=8888, name="http")],
                         resources=k8s.V1ResourceRequirements(
                             limits={"cpu": res.limits.cpu, "memory": res.limits.memory},
