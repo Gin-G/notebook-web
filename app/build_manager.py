@@ -229,7 +229,10 @@ from repo2docker import Repo2Docker
 r2d = Repo2Docker()
 r2d.repo = '/workspace/repo'
 r2d.output_image_spec = '{image}'
-r2d.dry_run = True
+# dry_run=True only prints the Dockerfile to stdout — it never writes the
+# build context to disk. With dry_run=False, repo2docker prepares the full
+# context in a tmpdir before trying (and failing) to reach the Docker daemon.
+# Our watcher captures it in that window.
 
 try:
     r2d.initialize([])
@@ -237,7 +240,7 @@ try:
 except (SystemExit, Exception):
     pass
 
-t.join(timeout=3)
+t.join(timeout=5)
 
 if not os.path.isfile('/workspace/context/Dockerfile'):
     sys.exit('repo2docker did not produce a Dockerfile')
