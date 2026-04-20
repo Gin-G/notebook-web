@@ -211,30 +211,37 @@ wget -qO- {BUILDCTL_URL} | tar xz -C /usr/local/bin --strip-components=1 bin/bui
 # Intercept that call and route it to buildctl against the in-cluster BuildKit.
 cat > /usr/local/bin/docker << 'DOCKEREOF'
 #!/bin/sh
-if [ "$1" = "buildx" ] && [ "$2" = "build" ]; then
+case "$1:$2" in
+  buildx:build)
     TAG=""; BARGS=""
     prev=""
     for arg; do
-        case "$prev" in
-            --tag|-t) TAG="$arg" ;;
-            --build-arg) BARGS="$BARGS --opt build-arg:$arg" ;;
-        esac
-        prev="$arg"
+      case "$prev" in
+        --tag|-t) TAG="$arg" ;;
+        --build-arg) BARGS="$BARGS --opt build-arg:$arg" ;;
+      esac
+      prev="$arg"
     done
     CONTEXT="$arg"
-    echo "buildctl: building $TAG from $CONTEXT"
+    echo "building $TAG from $CONTEXT via buildctl"
     exec buildctl \
-        --addr {buildkit_addr} \
-        build \
-        --frontend dockerfile.v0 \
-        --local context="$CONTEXT" \
-        --local dockerfile="$CONTEXT" \
-        $BARGS \
-        --output "type=image,name=$TAG,push=true"
-fi
-# docker inspect: return "not found" so repo2docker doesn't skip the build
-if [ "$1" = "inspect" ]; then echo '[]'; exit 1; fi
-exit 0
+      --addr {buildkit_addr} \
+      build \
+      --frontend dockerfile.v0 \
+      --local context="$CONTEXT" \
+      --local dockerfile="$CONTEXT" \
+      $BARGS \
+      --output "type=image,name=$TAG,push=true"
+    ;;
+  image:inspect|inspect:*)
+    echo '[]'; exit 1 ;;
+  image:push|push:*)
+    exit 0 ;;
+  info:*|version:*)
+    printf '{{"ServerVersion":"20.10.0","ApiVersion":"1.41"}}\n'; exit 0 ;;
+  *)
+    exit 0 ;;
+esac
 DOCKEREOF
 chmod +x /usr/local/bin/docker
 
