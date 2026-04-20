@@ -58,7 +58,7 @@ ingress:
 # ── Application image ─────────────────────────────────────────────────────────
 image:
   repository: ghcr.io/gin-g/notebook-web
-  tag: "fbacdf9"
+  tag: "afa1cfd"
   pullPolicy: IfNotPresent
 
 # ── Session image pre-builder ─────────────────────────────────────────────────
