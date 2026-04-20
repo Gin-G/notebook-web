@@ -328,7 +328,7 @@ PYEOF
             ),
         )
 
-        # Clean up stale job if present
+        # Clean up stale job and wait until it's fully gone before recreating
         try:
             await loop.run_in_executor(
                 None,
@@ -337,7 +337,15 @@ PYEOF
                     body=k8s.V1DeleteOptions(propagation_policy="Foreground"),
                 ),
             )
-            await asyncio.sleep(5)
+            for _ in range(30):
+                await asyncio.sleep(2)
+                try:
+                    await loop.run_in_executor(
+                        None, lambda: self._batch.read_namespaced_job(job_name, self._ns())
+                    )
+                except k8s.exceptions.ApiException as e:
+                    if e.status == 404:
+                        break
         except k8s.exceptions.ApiException:
             pass
 
