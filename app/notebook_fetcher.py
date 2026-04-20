@@ -38,11 +38,14 @@ def sync_notebook(notebook: NotebookEntry, cache_dir: str) -> Optional[Path]:
                 repo.git.reset("--hard", f"origin/{notebook.ref}")
                 log.info("Pulled %s @ %s", notebook.name, notebook.ref)
             except git.GitCommandError as e:
-                # Branch may be a tag or commit SHA — fall back to full clone
                 log.warning("Reset failed for %s, re-cloning: %s", notebook.name, e)
                 import shutil
                 shutil.rmtree(repo_dir, ignore_errors=True)
-                raise
+                git.Repo.clone_from(
+                    notebook.repo, repo_dir,
+                    depth=1, single_branch=True, branch=notebook.ref,
+                )
+                log.info("Re-cloned %s @ %s", notebook.name, notebook.ref)
         else:
             repo_dir.parent.mkdir(parents=True, exist_ok=True)
             git.Repo.clone_from(
