@@ -192,32 +192,43 @@ class BuildManager:
         # it up, then exit before it tries to call docker build.
         generate_cmd = rf"""
 python3 - << 'PYEOF'
-import sys, os, shutil, tempfile, logging
+import sys, os, shutil, threading, time, logging
 
 logging.getLogger("repo2docker").setLevel(logging.WARNING)
 
-# repo2docker uses TemporaryDirectory (context manager), not mkdtemp.
-# Subclass it so we can copy the build context before cleanup.
-_orig_TD = tempfile.TemporaryDirectory
+# repo2docker creates a TemporaryDirectory, writes the build context into it,
+# then cleans it up before we can intercept. Poll /tmp in a background thread
+# and copy the moment a Dockerfile appears — before cleanup runs.
+_found = threading.Event()
 
-class _CaptureTD(_orig_TD):
-    def __exit__(self, *args):
-        if os.path.isfile(os.path.join(self.name, "Dockerfile")):
-            shutil.copytree(self.name, "/workspace/context", dirs_exist_ok=True)
-            print(f"context written to /workspace/context (from {{self.name}})", flush=True)
-        super().__exit__(*args)
-    def cleanup(self):
-        if os.path.isfile(os.path.join(self.name, "Dockerfile")):
-            shutil.copytree(self.name, "/workspace/context", dirs_exist_ok=True)
-        super().cleanup()
+def _watch():
+    seen = set(os.listdir('/tmp'))
+    while not _found.is_set():
+        time.sleep(0.05)
+        try:
+            current = set(os.listdir('/tmp'))
+        except Exception:
+            continue
+        for name in current - seen:
+            path = os.path.join('/tmp', name)
+            if os.path.isdir(path) and os.path.isfile(os.path.join(path, 'Dockerfile')):
+                try:
+                    shutil.copytree(path, '/workspace/context', dirs_exist_ok=True)
+                    print(f'context captured from {{path}}', flush=True)
+                    _found.set()
+                except Exception as e:
+                    print(f'copy error: {{e}}', flush=True)
+                return
+        seen = current
 
-tempfile.TemporaryDirectory = _CaptureTD
+t = threading.Thread(target=_watch, daemon=True)
+t.start()
 
 from repo2docker import Repo2Docker
 
 r2d = Repo2Docker()
-r2d.repo = "/workspace/repo"
-r2d.output_image_spec = "{image}"
+r2d.repo = '/workspace/repo'
+r2d.output_image_spec = '{image}'
 r2d.dry_run = True
 
 try:
@@ -226,10 +237,12 @@ try:
 except (SystemExit, Exception):
     pass
 
-if not os.path.isfile("/workspace/context/Dockerfile"):
-    sys.exit("repo2docker did not produce a Dockerfile")
+t.join(timeout=3)
 
-print("context ready", flush=True)
+if not os.path.isfile('/workspace/context/Dockerfile'):
+    sys.exit('repo2docker did not produce a Dockerfile')
+
+print('context ready', flush=True)
 PYEOF
 """.strip()
         # The push secret is a generic secret with a raw token under key 'api'
