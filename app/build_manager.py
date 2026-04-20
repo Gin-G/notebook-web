@@ -269,6 +269,7 @@ r2d.repo = "/workspace/repo"
 r2d.output_image_spec = "{image}"
 r2d.user_id = 1000
 r2d.user_name = "jovyan"
+r2d.run = False
 r2d.initialize([])
 r2d.start()
 print("Done.", flush=True)
