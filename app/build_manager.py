@@ -226,8 +226,23 @@ for d in reversed(_dirs):
 sys.exit("repo2docker did not produce a Dockerfile")
 PYEOF
 """.strip()
+        # The push secret is a generic secret with a raw token under key 'api'
+        # (e.g. synced from OpenBao via ExternalSecrets). We mount it and
+        # construct a docker config.json at build time so buildctl can push.
+        push_auth_cmd = ""
+        if self.config.build.pushSecretName:
+            registry_host = self.config.build.registry.split("/")[0]
+            push_auth_cmd = rf"""
+TOKEN=$(cat /run/secrets/push/api)
+mkdir -p /root/.docker
+printf '{{"auths":{{"{registry_host}":{{"auth":"%s"}}}}}}' \
+  "$(printf 'x-token:%s' "$TOKEN" | base64 -w0)" \
+  > /root/.docker/config.json
+""".strip()
+
         build_cmd = rf"""
 set -e
+{push_auth_cmd}
 echo "Downloading buildctl {BUILDCTL_VERSION}..."
 wget -qO- {BUILDCTL_URL} | tar xz -C /usr/local/bin --strip-components=1 bin/buildctl
 
@@ -254,7 +269,7 @@ buildctl \
             ))
             main_mounts.append(k8s.V1VolumeMount(
                 name="push-secret",
-                mount_path="/root/.docker",
+                mount_path="/run/secrets/push",
                 read_only=True,
             ))
 

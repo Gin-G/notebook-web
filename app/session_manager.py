@@ -88,8 +88,8 @@ class SessionManager:
         jupyter_image = notebook.image or sd.image
         using_prebuilt = jupyter_image != sd.image
         pull_secrets = (
-            [k8s.V1LocalObjectReference(name=self.config.build.pushSecretName)]
-            if self.config.build.pushSecretName and using_prebuilt
+            [k8s.V1LocalObjectReference(name=self.config.build.pullSecretName)]
+            if self.config.build.pullSecretName and using_prebuilt
             else []
         )
 
