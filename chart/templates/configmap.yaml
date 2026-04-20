@@ -7,13 +7,15 @@ metadata:
     {{- include "notebook-gallery.labels" . | nindent 4 }}
 data:
   config.json: |
+    {{- $defaultBuildkit := printf "%s-buildkit-service" .Release.Name }}
+    {{- $build := merge .Values.build (dict "buildkitServiceName" $defaultBuildkit) }}
     {{- dict
           "notebooks"        .Values.notebooks
           "sessionDefaults"  .Values.sessionDefaults
           "theme"            .Values.theme
           "ingress"          .Values.ingress
           "image"            .Values.image
-          "build"            .Values.build
+          "build"            $build
           "namespace"        .Release.Namespace
           "cacheDir"         .Values.cacheDir
       | toJson | nindent 4 }}
