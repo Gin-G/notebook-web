@@ -13,6 +13,7 @@ data:
           "theme"            .Values.theme
           "ingress"          .Values.ingress
           "image"            .Values.image
+          "build"            .Values.build
           "namespace"        .Release.Namespace
           "cacheDir"         .Values.cacheDir
       | toJson | nindent 4 }}
