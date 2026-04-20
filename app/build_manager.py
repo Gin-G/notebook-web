@@ -265,7 +265,10 @@ buildctl \
         if self.config.build.pushSecretName:
             volumes.append(k8s.V1Volume(
                 name="push-secret",
-                secret=k8s.V1SecretVolumeSource(secret_name=self.config.build.pushSecretName),
+                secret=k8s.V1SecretVolumeSource(
+                    secret_name=self.config.build.pushSecretName,
+                    optional=True,
+                ),
             ))
             main_mounts.append(k8s.V1VolumeMount(
                 name="push-secret",
