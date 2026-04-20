@@ -196,13 +196,22 @@ import sys, os, shutil, tempfile, logging
 
 logging.getLogger("repo2docker").setLevel(logging.WARNING)
 
-_orig = tempfile.mkdtemp
-_dirs = []
-def _capture(*a, **kw):
-    d = _orig(*a, **kw)
-    _dirs.append(d)
-    return d
-tempfile.mkdtemp = _capture
+# repo2docker uses TemporaryDirectory (context manager), not mkdtemp.
+# Subclass it so we can copy the build context before cleanup.
+_orig_TD = tempfile.TemporaryDirectory
+
+class _CaptureTD(_orig_TD):
+    def __exit__(self, *args):
+        if os.path.isfile(os.path.join(self.name, "Dockerfile")):
+            shutil.copytree(self.name, "/workspace/context", dirs_exist_ok=True)
+            print(f"context written to /workspace/context (from {{self.name}})", flush=True)
+        super().__exit__(*args)
+    def cleanup(self):
+        if os.path.isfile(os.path.join(self.name, "Dockerfile")):
+            shutil.copytree(self.name, "/workspace/context", dirs_exist_ok=True)
+        super().cleanup()
+
+tempfile.TemporaryDirectory = _CaptureTD
 
 from repo2docker import Repo2Docker
 
@@ -217,13 +226,10 @@ try:
 except (SystemExit, Exception):
     pass
 
-for d in reversed(_dirs):
-    if os.path.isfile(os.path.join(d, "Dockerfile")):
-        shutil.copytree(d, "/workspace/context", dirs_exist_ok=True)
-        print(f"context written to /workspace/context (from {{d}})", flush=True)
-        sys.exit(0)
+if not os.path.isfile("/workspace/context/Dockerfile"):
+    sys.exit("repo2docker did not produce a Dockerfile")
 
-sys.exit("repo2docker did not produce a Dockerfile")
+print("context ready", flush=True)
 PYEOF
 """.strip()
         # The push secret is a generic secret with a raw token under key 'api'
