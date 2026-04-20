@@ -183,73 +183,13 @@ class BuildManager:
             f"git clone --depth=1 --single-branch --branch {ref} {repo} /workspace/repo"
         )
 
-        # ── Init 2: generate build context via repo2docker ───────────────────
+        # ── Main container: repo2docker + buildctl ────────────────────────────
         #
-        # repo2docker detects all environment specs (environment.yml,
-        # requirements.txt, apt.txt, postBuild, etc.) and generates a complete
-        # Dockerfile + build context in a temp dir. We intercept mkdtemp so we
-        # can copy the context to /workspace/context before repo2docker cleans
-        # it up, then exit before it tries to call docker build.
-        generate_cmd = rf"""
-python3 - << 'PYEOF'
-import sys, os, shutil, logging
-
-logging.getLogger("repo2docker").setLevel(logging.WARNING)
-
-# repo2docker calls docker.from_env() early and fails immediately when
-# there is no Docker daemon, before it ever writes the build context.
-# Intercept docker.from_env before importing repo2docker so we can
-# return a fake client that lets context prep proceed, then capture
-# the tmpdir path from the images.build() call.
-import docker, docker.errors
-
-_captured = [None]
-
-class _FakeImages:
-    def build(self, path=None, fileobj=None, **kwargs):
-        if path and os.path.isfile(os.path.join(path, 'Dockerfile')):
-            shutil.copytree(path, '/workspace/context', dirs_exist_ok=True)
-            _captured[0] = path
-            print(f'context captured from {{path}}', flush=True)
-        raise Exception('context captured — aborting docker build')
-    def get(self, name):
-        raise docker.errors.ImageNotFound(name)
-    def push(self, *a, **kw):
-        return iter([])
-
-class _FakeClient:
-    images = _FakeImages()
-    def version(self): return {{'Version': '20.10.0', 'ApiVersion': '1.41'}}
-    def ping(self): return True
-    def info(self): return {{'DockerRootDir': '/var/lib/docker'}}
-    def __getattr__(self, name):
-        return lambda *a, **kw: None
-
-_fake = _FakeClient()
-docker.from_env = lambda **kw: _fake
-docker.DockerClient = lambda **kw: _fake
-
-from repo2docker import Repo2Docker
-
-r2d = Repo2Docker()
-r2d.repo = '/workspace/repo'
-r2d.output_image_spec = '{image}'
-
-try:
-    r2d.initialize([])
-    r2d.start()
-except (SystemExit, Exception):
-    pass
-
-if not os.path.isfile('/workspace/context/Dockerfile'):
-    sys.exit('repo2docker did not produce a Dockerfile')
-
-print('context ready', flush=True)
-PYEOF
-""".strip()
-        # The push secret is a generic secret with a raw token under key 'api'
-        # (e.g. synced from OpenBao via ExternalSecrets). We mount it and
-        # construct a docker config.json at build time so buildctl can push.
+        # repo2docker normally calls docker.from_env() which fails with no
+        # daemon. We intercept it before import and provide a fake client
+        # whose images.build(path=tmpdir) runs buildctl directly against
+        # the in-cluster BuildKit service — while the tmpdir is still open.
+        # No context copying needed.
         push_auth_cmd = ""
         if self.config.build.pushSecretName:
             registry_host = self.config.build.registry.split("/")[0]
@@ -267,14 +207,54 @@ set -e
 echo "Downloading buildctl {BUILDCTL_VERSION}..."
 wget -qO- {BUILDCTL_URL} | tar xz -C /usr/local/bin --strip-components=1 bin/buildctl
 
-echo "Building {image} via {buildkit_addr}..."
-buildctl \
-  --addr {buildkit_addr} \
-  build \
-  --frontend dockerfile.v0 \
-  --local context=/workspace/context \
-  --local dockerfile=/workspace/context \
-  --output type=image,name={image},push=true
+python3 - << 'PYEOF'
+import sys, os, subprocess, logging
+
+logging.getLogger("repo2docker").setLevel(logging.WARNING)
+
+import docker, docker.errors
+
+class _FakeImages:
+    def build(self, path=None, **kwargs):
+        if not path:
+            raise Exception("no path provided to images.build()")
+        print(f"Building {image} from context {{path}} via {buildkit_addr}...", flush=True)
+        r = subprocess.run([
+            "buildctl", "--addr", "{buildkit_addr}", "build",
+            "--frontend", "dockerfile.v0",
+            "--local", f"context={{path}}",
+            "--local", f"dockerfile={{path}}",
+            "--output", "type=image,name={image},push=true",
+        ])
+        if r.returncode != 0:
+            raise Exception(f"buildctl exited {{r.returncode}}")
+        return iter([{{"stream": "Build complete\\n"}}])
+    def get(self, name):
+        raise docker.errors.ImageNotFound(name)
+    def push(self, *a, **kw):
+        return iter([])
+
+class _FakeClient:
+    images = _FakeImages()
+    def version(self): return {{"Version": "20.10.0", "ApiVersion": "1.41"}}
+    def ping(self): return True
+    def info(self): return {{"DockerRootDir": "/var/lib/docker"}}
+    def __getattr__(self, name): return lambda *a, **kw: None
+
+_fake = _FakeClient()
+docker.from_env = lambda **kw: _fake
+docker.DockerClient = lambda **kw: _fake
+
+from repo2docker import Repo2Docker
+
+r2d = Repo2Docker()
+r2d.repo = "/workspace/repo"
+r2d.output_image_spec = "{image}"
+r2d.initialize([])
+r2d.start()
+
+print("Done.", flush=True)
+PYEOF
 """.strip()
 
         ws_mount = k8s.V1VolumeMount(name="workspace", mount_path="/workspace")
@@ -316,17 +296,11 @@ buildctl \
                                 command=["sh", "-c", clone_cmd],
                                 volume_mounts=[ws_mount],
                             ),
-                            k8s.V1Container(
-                                name="generate-context",
-                                image="quay.io/jupyterhub/repo2docker:latest",
-                                command=["sh", "-c", generate_cmd],
-                                volume_mounts=[ws_mount],
-                            ),
                         ],
                         containers=[
                             k8s.V1Container(
                                 name="build",
-                                image="alpine:latest",
+                                image="quay.io/jupyterhub/repo2docker:latest",
                                 command=["sh", "-c", build_cmd],
                                 volume_mounts=main_mounts,
                             )
