@@ -274,6 +274,19 @@ r2d.initialize([])
 r2d.start()
 print("Done.", flush=True)
 PYEOF
+
+# Set the pushed package to public via GitHub API
+if [ -f /run/secrets/push/api ]; then
+  TOKEN=$(cat /run/secrets/push/api)
+  PKG=$(echo "{image}" | sed 's|ghcr.io/[^/]*/||; s|:.*||')
+  ENCODED=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1],safe=''))" "$PKG")
+  curl -sf -X PATCH \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "Accept: application/vnd.github+json" \
+    -H "X-GitHub-Api-Version: 2022-11-28" \
+    "https://api.github.com/user/packages/container/$ENCODED" \
+    -d '{{"visibility":"public"}}' && echo "Package $PKG set to public" || echo "Warning: could not set package visibility"
+fi
 """.strip()
 
         ws_mount = k8s.V1VolumeMount(name="workspace", mount_path="/workspace")
