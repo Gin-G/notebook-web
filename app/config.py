@@ -32,6 +32,7 @@ class NotebookEntry(BaseModel):
     description: str = ""
     resources: Optional[Resources] = None
     id: str = ""
+    cacheId: str = ""  # cache directory key; set to parent id for notebooks expanded from a directory
 
     def model_post_init(self, __context) -> None:
         if not self.id:

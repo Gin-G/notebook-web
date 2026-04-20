@@ -18,7 +18,7 @@ log = logging.getLogger(__name__)
 
 
 def _repo_dir(notebook: NotebookEntry, cache_dir: str) -> Path:
-    return Path(cache_dir) / notebook.id / "repo"
+    return Path(cache_dir) / (notebook.cacheId or notebook.id) / "repo"
 
 
 def _notebook_path(notebook: NotebookEntry, cache_dir: str) -> Path:
@@ -153,6 +153,7 @@ def discover_notebooks(notebook: NotebookEntry, cache_dir: str) -> List[Notebook
         slug = re.sub(r"[^a-z0-9]+", "-", nb_path.stem.lower()).strip("-")
         children.append(NotebookEntry(
             id=f"{notebook.id}-{slug}",
+            cacheId=notebook.id,
             name=_notebook_title(nb_path),
             repo=notebook.repo,
             ref=notebook.ref,
