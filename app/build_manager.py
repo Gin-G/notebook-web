@@ -297,7 +297,7 @@ buildctl \
                             ),
                             k8s.V1Container(
                                 name="generate-context",
-                                image="quay.io/jupyter/repo2docker:latest",
+                                image="quay.io/jupyterhub/repo2docker:latest",
                                 command=["sh", "-c", generate_cmd],
                                 volume_mounts=[ws_mount],
                             ),
