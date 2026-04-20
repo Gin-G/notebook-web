@@ -207,35 +207,42 @@ set -e
 echo "Downloading buildctl {BUILDCTL_VERSION}..."
 wget -qO- {BUILDCTL_URL} | tar xz -C /usr/local/bin --strip-components=1 bin/buildctl
 
-python3 - << 'PYEOF'
-import sys, os, subprocess, logging
+# Fake docker binary: repo2docker calls 'docker buildx build' as a subprocess.
+# Intercept that call and route it to buildctl against the in-cluster BuildKit.
+cat > /usr/local/bin/docker << 'DOCKEREOF'
+#!/bin/sh
+if [ "$1" = "buildx" ] && [ "$2" = "build" ]; then
+    TAG=""; BARGS=""
+    prev=""
+    for arg; do
+        case "$prev" in
+            --tag|-t) TAG="$arg" ;;
+            --build-arg) BARGS="$BARGS --opt build-arg:$arg" ;;
+        esac
+        prev="$arg"
+    done
+    CONTEXT="$arg"
+    echo "buildctl: building $TAG from $CONTEXT"
+    exec buildctl \
+        --addr {buildkit_addr} \
+        build \
+        --frontend dockerfile.v0 \
+        --local context="$CONTEXT" \
+        --local dockerfile="$CONTEXT" \
+        $BARGS \
+        --output "type=image,name=$TAG,push=true"
+fi
+echo '{{}}' ; exit 0
+DOCKEREOF
+chmod +x /usr/local/bin/docker
 
+python3 - << 'PYEOF'
+import logging
 logging.getLogger("repo2docker").setLevel(logging.WARNING)
 
 import docker, docker.errors
 
-class _FakeImages:
-    def build(self, path=None, **kwargs):
-        if not path:
-            raise Exception("no path provided to images.build()")
-        print(f"Building {image} from context {{path}} via {buildkit_addr}...", flush=True)
-        r = subprocess.run([
-            "buildctl", "--addr", "{buildkit_addr}", "build",
-            "--frontend", "dockerfile.v0",
-            "--local", f"context={{path}}",
-            "--local", f"dockerfile={{path}}",
-            "--output", "type=image,name={image},push=true",
-        ])
-        if r.returncode != 0:
-            raise Exception(f"buildctl exited {{r.returncode}}")
-        return iter([{{"stream": "Build complete\\n"}}])
-    def get(self, name):
-        raise docker.errors.ImageNotFound(name)
-    def push(self, *a, **kw):
-        return iter([])
-
 class _FakeClient:
-    images = _FakeImages()
     def version(self): return {{"Version": "20.10.0", "ApiVersion": "1.41"}}
     def ping(self): return True
     def info(self): return {{"DockerRootDir": "/var/lib/docker"}}
@@ -254,7 +261,6 @@ r2d.user_id = 1000
 r2d.user_name = "jovyan"
 r2d.initialize([])
 r2d.start()
-
 print("Done.", flush=True)
 PYEOF
 """.strip()
