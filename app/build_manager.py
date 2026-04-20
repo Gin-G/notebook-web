@@ -192,55 +192,54 @@ class BuildManager:
         # it up, then exit before it tries to call docker build.
         generate_cmd = rf"""
 python3 - << 'PYEOF'
-import sys, os, shutil, threading, time, logging
+import sys, os, shutil, logging
 
 logging.getLogger("repo2docker").setLevel(logging.WARNING)
 
-# repo2docker creates a TemporaryDirectory, writes the build context into it,
-# then cleans it up before we can intercept. Poll /tmp in a background thread
-# and copy the moment a Dockerfile appears — before cleanup runs.
-_found = threading.Event()
+# repo2docker calls docker.from_env() early and fails immediately when
+# there is no Docker daemon, before it ever writes the build context.
+# Intercept docker.from_env before importing repo2docker so we can
+# return a fake client that lets context prep proceed, then capture
+# the tmpdir path from the images.build() call.
+import docker, docker.errors
 
-def _watch():
-    seen = set(os.listdir('/tmp'))
-    while not _found.is_set():
-        time.sleep(0.05)
-        try:
-            current = set(os.listdir('/tmp'))
-        except Exception:
-            continue
-        for name in current - seen:
-            path = os.path.join('/tmp', name)
-            if os.path.isdir(path) and os.path.isfile(os.path.join(path, 'Dockerfile')):
-                try:
-                    shutil.copytree(path, '/workspace/context', dirs_exist_ok=True)
-                    print(f'context captured from {{path}}', flush=True)
-                    _found.set()
-                except Exception as e:
-                    print(f'copy error: {{e}}', flush=True)
-                return
-        seen = current
+_captured = [None]
 
-t = threading.Thread(target=_watch, daemon=True)
-t.start()
+class _FakeImages:
+    def build(self, path=None, fileobj=None, **kwargs):
+        if path and os.path.isfile(os.path.join(path, 'Dockerfile')):
+            shutil.copytree(path, '/workspace/context', dirs_exist_ok=True)
+            _captured[0] = path
+            print(f'context captured from {{path}}', flush=True)
+        raise Exception('context captured — aborting docker build')
+    def get(self, name):
+        raise docker.errors.ImageNotFound(name)
+    def push(self, *a, **kw):
+        return iter([])
+
+class _FakeClient:
+    images = _FakeImages()
+    def version(self): return {{'Version': '20.10.0', 'ApiVersion': '1.41'}}
+    def ping(self): return True
+    def info(self): return {{'DockerRootDir': '/var/lib/docker'}}
+    def __getattr__(self, name):
+        return lambda *a, **kw: None
+
+_fake = _FakeClient()
+docker.from_env = lambda **kw: _fake
+docker.DockerClient = lambda **kw: _fake
 
 from repo2docker import Repo2Docker
 
 r2d = Repo2Docker()
 r2d.repo = '/workspace/repo'
 r2d.output_image_spec = '{image}'
-# dry_run=True only prints the Dockerfile to stdout — it never writes the
-# build context to disk. With dry_run=False, repo2docker prepares the full
-# context in a tmpdir before trying (and failing) to reach the Docker daemon.
-# Our watcher captures it in that window.
 
 try:
     r2d.initialize([])
     r2d.start()
 except (SystemExit, Exception):
     pass
-
-t.join(timeout=5)
 
 if not os.path.isfile('/workspace/context/Dockerfile'):
     sys.exit('repo2docker did not produce a Dockerfile')
