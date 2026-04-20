@@ -1,0 +1,18 @@
+name: Make session image public
+
+on:
+  registry_package:
+    types: [published]
+
+jobs:
+  set-public:
+    runs-on: ubuntu-latest
+    if: github.event.registry_package.package_type == 'CONTAINER'
+    steps:
+      - name: Set package visibility to public
+        env:
+          GH_TOKEN: ${{ secrets.PACKAGES_PAT }}
+          PACKAGE_NAME: ${{ github.event.registry_package.name }}
+        run: |
+          ENCODED=$(python3 -c "import urllib.parse, os; print(urllib.parse.quote(os.environ['PACKAGE_NAME'], safe=''))")
+          gh api --method PATCH "/user/packages/container/${ENCODED}" -f visibility=public
