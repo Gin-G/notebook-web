@@ -78,6 +78,7 @@ class BuildManager:
         slug = re.sub(r"-{2,}", "-", slug).strip("-")
         parts = [p for p in slug.split("/") if p]
         short = "-".join(parts[-2:]) if len(parts) >= 2 else parts[0]
+        short = short.lower()
         safe_ref = re.sub(r"[^a-zA-Z0-9._-]", "-", ref)
         return f"{self.config.build.registry}/{short}:{safe_ref}"
 
