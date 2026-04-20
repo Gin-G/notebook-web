@@ -232,7 +232,9 @@ if [ "$1" = "buildx" ] && [ "$2" = "build" ]; then
         $BARGS \
         --output "type=image,name=$TAG,push=true"
 fi
-echo '{{}}' ; exit 0
+# docker inspect: return "not found" so repo2docker doesn't skip the build
+if [ "$1" = "inspect" ]; then echo '[]'; exit 1; fi
+exit 0
 DOCKEREOF
 chmod +x /usr/local/bin/docker
 
