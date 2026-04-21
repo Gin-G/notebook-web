@@ -385,6 +385,7 @@ fi
                     log.info("Build succeeded: %s", image)
                     self._cache[key] = image
                     await self._save_cache()
+                    asyncio.create_task(self._prepull(image))
                     return
                 if j.status.failed and j.status.failed >= 2:
                     log.error("Build job %s failed — check pod logs in ns %s", job_name, self._ns())
@@ -393,3 +394,43 @@ fi
                 log.warning("Error polling build job %s: %s", job_name, e)
 
         log.error("Build job %s timed out", job_name)
+
+    async def _prepull(self, image: str) -> None:
+        """Run a no-op Job with the built image on each node to warm the pull cache."""
+        loop = asyncio.get_event_loop()
+        slug = hashlib.sha256(image.encode()).hexdigest()[:12]
+        job_name = f"nb-prepull-{slug}"
+
+        pull_secrets = (
+            [k8s.V1LocalObjectReference(name=self.config.build.pullSecretName)]
+            if self.config.build.pullSecretName
+            else []
+        )
+
+        job = k8s.V1Job(
+            metadata=k8s.V1ObjectMeta(
+                name=job_name, namespace=self._ns(),
+                labels={JOB_LABEL: JOB_VALUE},
+            ),
+            spec=k8s.V1JobSpec(
+                ttl_seconds_after_finished=120,
+                template=k8s.V1PodTemplateSpec(
+                    spec=k8s.V1PodSpec(
+                        restart_policy="Never",
+                        image_pull_secrets=pull_secrets or None,
+                        containers=[k8s.V1Container(
+                            name="prepull",
+                            image=image,
+                            command=["sh", "-c", "exit 0"],
+                        )],
+                    )
+                ),
+            ),
+        )
+        try:
+            await loop.run_in_executor(
+                None, lambda: self._batch.create_namespaced_job(self._ns(), job)
+            )
+            log.info("Pre-pull job started for %s", image)
+        except Exception as e:
+            log.warning("Could not create pre-pull job for %s: %s", image, e)
