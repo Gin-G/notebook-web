@@ -12,6 +12,7 @@ from fastapi import FastAPI, HTTPException, Request, WebSocket
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from jinja2 import ChoiceLoader, Environment, FileSystemLoader, select_autoescape
 from pydantic import BaseModel
 
 from .config import AppConfig, NotebookEntry, load_config
@@ -92,7 +93,19 @@ app.mount(
     StaticFiles(directory=os.path.join(BASE_DIR, "static")),
     name="static",
 )
-templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
+def _build_jinja_env() -> Environment:
+    loaders: list[FileSystemLoader] = []
+    override_dir = os.environ.get("TEMPLATE_OVERRIDE_DIR")
+    if override_dir and os.path.isdir(override_dir):
+        present = sorted(os.listdir(override_dir))
+        if present:
+            log.info("Loading template overrides from %s: %s", override_dir, present)
+            loaders.append(FileSystemLoader(override_dir))
+    loaders.append(FileSystemLoader(os.path.join(BASE_DIR, "templates")))
+    return Environment(loader=ChoiceLoader(loaders), autoescape=select_autoescape(["html", "xml"]))
+
+
+templates = Jinja2Templates(env=_build_jinja_env())
 
 
 def _find(notebook_id: str) -> Optional[NotebookEntry]:

@@ -29,6 +29,25 @@ spec:
       serviceAccountName: {{ include "notebook-gallery.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- if .Values.templateOverrides }}
+      initContainers:
+        - name: fetch-template-overrides
+          image: {{ .Values.templateOverrideFetcherImage | quote }}
+          command: ["sh", "-c"]
+          args:
+            - |
+              mkdir -p /overrides
+              {{- range $name, $url := .Values.templateOverrides }}
+              echo "Fetching {{ $name }}"
+              curl -fsSL --max-time 15 {{ $url | quote }} -o /overrides/{{ $name }} \
+                || echo "WARN: skipped {{ $name }} (fetch failed, falling back to bundled)"
+              {{- end }}
+              echo "Template override fetch complete"
+              ls -la /overrides
+          volumeMounts:
+            - name: template-overrides
+              mountPath: /overrides
+      {{- end }}
       containers:
         - name: notebook-gallery
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -42,12 +61,21 @@ spec:
           env:
             - name: CONFIG_PATH
               value: /etc/notebook-gallery/config.json
+            {{- if .Values.templateOverrides }}
+            - name: TEMPLATE_OVERRIDE_DIR
+              value: /etc/notebook-gallery/templates-overrides
+            {{- end }}
           volumeMounts:
             - name: config
               mountPath: /etc/notebook-gallery
               readOnly: true
             - name: notebook-cache
               mountPath: {{ .Values.cacheDir }}
+            {{- if .Values.templateOverrides }}
+            - name: template-overrides
+              mountPath: /etc/notebook-gallery/templates-overrides
+              readOnly: true
+            {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           livenessProbe:
@@ -75,3 +103,7 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
+        {{- if .Values.templateOverrides }}
+        - name: template-overrides
+          emptyDir: {}
+        {{- end }}

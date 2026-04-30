@@ -90,6 +90,19 @@ namespace: default
 # ── Notebook cache directory inside the app container ────────────────────────
 cacheDir: /tmp/notebook-cache
 
+# ── Template overrides ───────────────────────────────────────────────────────
+# Map of Jinja template filename → URL. An init container fetches each URL
+# into a shared volume that takes precedence over the bundled templates.
+# Failed fetches log a warning and fall through to the bundled default.
+# Example:
+#   templateOverrides:
+#     navbar.html: "https://raw.githubusercontent.com/acme/branding/main/navbar.html"
+#     gallery.html: "https://raw.githubusercontent.com/acme/branding/main/gallery.html"
+templateOverrides: {}
+
+# Image used by the template-override init container. Needs curl on PATH.
+templateOverrideFetcherImage: "curlimages/curl:8.10.1"
+
 # ── Persistence for the notebook cache ───────────────────────────────────────
 # When enabled, cacheDir is backed by a PVC so cloned notebook repos survive
 # pod restarts. Disable to fall back to emptyDir (cache rebuilt on every roll).
