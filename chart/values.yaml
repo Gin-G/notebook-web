@@ -37,7 +37,7 @@ sessionDefaults:
 
 # ── Theme ─────────────────────────────────────────────────────────────────────
 theme:
-  title: "CIRRUS Notebook Gallery"
+  title: "Notebook Gallery"
   primaryColor: "#1a5276"
   fontFamily: "Inter, system-ui, sans-serif"
   customCssPath: ""
