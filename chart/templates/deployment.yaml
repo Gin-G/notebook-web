@@ -8,6 +8,10 @@ metadata:
 spec:
   replicas: {{ .Values.replicaCount }}
   revisionHistoryLimit: {{ .Values.revisionHistoryLimit | default 3 }}
+  {{- if and .Values.persistence.enabled (eq .Values.persistence.accessMode "ReadWriteOnce") }}
+  strategy:
+    type: Recreate
+  {{- end }}
   selector:
     matchLabels:
       {{- include "notebook-gallery.selectorLabels" . | nindent 6 }}
@@ -65,4 +69,9 @@ spec:
           configMap:
             name: {{ include "notebook-gallery.fullname" . }}-config
         - name: notebook-cache
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "notebook-gallery.fullname" . }}-cache
+          {{- else }}
           emptyDir: {}
+          {{- end }}

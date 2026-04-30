@@ -90,6 +90,15 @@ namespace: default
 # ── Notebook cache directory inside the app container ────────────────────────
 cacheDir: /tmp/notebook-cache
 
+# ── Persistence for the notebook cache ───────────────────────────────────────
+# When enabled, cacheDir is backed by a PVC so cloned notebook repos survive
+# pod restarts. Disable to fall back to emptyDir (cache rebuilt on every roll).
+persistence:
+  enabled: true
+  size: 5Gi
+  storageClass: ""           # empty → cluster default StorageClass
+  accessMode: ReadWriteOnce
+
 # ── Deployment settings ───────────────────────────────────────────────────────
 replicaCount: 1
 revisionHistoryLimit: 3
